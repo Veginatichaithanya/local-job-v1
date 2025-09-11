@@ -41,7 +41,7 @@ const Auth = () => {
       if (profile.role === 'worker') {
         navigate('/worker/dashboard');
       } else if (profile.role === 'job_provider') {
-        navigate('/'); // For now, redirect job providers to home
+        navigate('/job-provider/dashboard');
       } else {
         navigate('/');
       }
