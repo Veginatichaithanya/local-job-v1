@@ -106,7 +106,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       const redirectUrl = `${window.location.origin}/`;
       
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -122,10 +122,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
       if (error) throw error;
 
-      toast({
-        title: "Account created successfully!",
-        description: "Please check your email to verify your account.",
-      });
+      // Check if email confirmation is required
+      if (data.user && !data.session) {
+        toast({
+          title: "Account created successfully!",
+          description: "Please check your email to verify your account before signing in.",
+        });
+      } else if (data.session) {
+        toast({
+          title: "Account created successfully!",
+          description: "You can now access your dashboard.",
+        });
+      }
 
       return { error: null };
     } catch (error: any) {
@@ -137,6 +145,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         errorMessage = "Please enter a valid email address";
       } else if (error.message?.includes('password')) {
         errorMessage = "Password must be at least 6 characters long";
+      } else if (error.message?.includes('signup disabled')) {
+        errorMessage = "Account registration is currently disabled";
       }
 
       toast({
