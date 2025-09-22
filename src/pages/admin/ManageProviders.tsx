@@ -17,6 +17,9 @@ interface JobProvider {
   phone: string;
   location: string;
   created_at: string;
+  email_confirmed_at: string | null;
+  last_sign_in_at: string | null;
+  auth_created_at: string;
 }
 
 export default function ManageProviders() {
@@ -42,7 +45,7 @@ export default function ManageProviders() {
   const fetchProviders = async () => {
     try {
       const { data, error } = await supabase
-        .from("profiles")
+        .from("admin_user_details")
         .select("*")
         .eq("role", "job_provider")
         .order("created_at", { ascending: false });
@@ -210,6 +213,25 @@ export default function ManageProviders() {
                   <div className="text-sm text-muted-foreground">
                     Joined: {new Date(provider.created_at).toLocaleDateString()}
                   </div>
+                  <div className="text-sm text-muted-foreground">
+                    User ID: {provider.user_id}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Email Verified: {provider.email_confirmed_at ? 'Yes' : 'No'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Last Login: {provider.last_sign_in_at ? new Date(provider.last_sign_in_at).toLocaleString() : 'Never'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Auth Created: {new Date(provider.auth_created_at).toLocaleDateString()}
+                  </div>
+                </div>
+
+                {/* Security Warning Notice */}
+                <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4">
+                  <p className="text-sm text-red-800">
+                    ⚠️ <strong>Security Note:</strong> Passwords are securely hashed by Supabase and cannot be viewed in plain text for security reasons. This is industry standard security practice.
+                  </p>
                 </div>
 
                 <div className="flex justify-end space-x-2">

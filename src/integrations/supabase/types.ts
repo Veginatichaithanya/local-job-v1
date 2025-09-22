@@ -51,6 +51,13 @@ export type Database = {
             foreignKeyName: "job_applications_worker_id_fkey"
             columns: ["worker_id"]
             isOneToOne: false
+            referencedRelation: "admin_user_details"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "job_applications_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
           },
@@ -101,7 +108,21 @@ export type Database = {
             foreignKeyName: "jobs_job_provider_id_fkey"
             columns: ["job_provider_id"]
             isOneToOne: false
+            referencedRelation: "admin_user_details"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "jobs_job_provider_id_fkey"
+            columns: ["job_provider_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "jobs_selected_worker_id_fkey"
+            columns: ["selected_worker_id"]
+            isOneToOne: false
+            referencedRelation: "admin_user_details"
             referencedColumns: ["user_id"]
           },
           {
@@ -160,12 +181,35 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      admin_user_details: {
+        Row: {
+          auth_created_at: string | null
+          company_name: string | null
+          created_at: string | null
+          email: string | null
+          email_confirmed_at: string | null
+          first_name: string | null
+          id: string | null
+          last_name: string | null
+          last_sign_in_at: string | null
+          location: string | null
+          phone: string | null
+          role: Database["public"]["Enums"]["user_role"] | null
+          skills: string[] | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_current_user_role: {
         Args: Record<PropertyKey, never>
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      is_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
       }
     }
     Enums: {

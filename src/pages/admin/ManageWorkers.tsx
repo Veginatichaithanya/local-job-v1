@@ -17,6 +17,9 @@ interface Worker {
   location: string;
   skills: string[];
   created_at: string;
+  email_confirmed_at: string | null;
+  last_sign_in_at: string | null;
+  auth_created_at: string;
 }
 
 export default function ManageWorkers() {
@@ -42,7 +45,7 @@ export default function ManageWorkers() {
   const fetchWorkers = async () => {
     try {
       const { data, error } = await supabase
-        .from("profiles")
+        .from("admin_user_details")
         .select("*")
         .eq("role", "worker")
         .order("created_at", { ascending: false });
@@ -210,6 +213,25 @@ export default function ManageWorkers() {
                   <div className="text-sm text-muted-foreground">
                     Joined: {new Date(worker.created_at).toLocaleDateString()}
                   </div>
+                  <div className="text-sm text-muted-foreground">
+                    User ID: {worker.user_id}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Email Verified: {worker.email_confirmed_at ? 'Yes' : 'No'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Last Login: {worker.last_sign_in_at ? new Date(worker.last_sign_in_at).toLocaleString() : 'Never'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Auth Created: {new Date(worker.auth_created_at).toLocaleDateString()}
+                  </div>
+                </div>
+
+                {/* Security Warning Notice */}
+                <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4">
+                  <p className="text-sm text-red-800">
+                    ⚠️ <strong>Security Note:</strong> Passwords are securely hashed by Supabase and cannot be viewed in plain text for security reasons. This is industry standard security practice.
+                  </p>
                 </div>
 
                 {worker.skills && worker.skills.length > 0 && (
