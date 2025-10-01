@@ -70,7 +70,12 @@ export type Database = {
           id: string
           job_date: string
           job_provider_id: string
+          job_time: string | null
+          latitude: number | null
           location: string | null
+          longitude: number | null
+          pincode: string | null
+          required_skills: string[] | null
           selected_worker_id: string | null
           status: Database["public"]["Enums"]["job_status"]
           title: string
@@ -83,7 +88,12 @@ export type Database = {
           id?: string
           job_date: string
           job_provider_id: string
+          job_time?: string | null
+          latitude?: number | null
           location?: string | null
+          longitude?: number | null
+          pincode?: string | null
+          required_skills?: string[] | null
           selected_worker_id?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           title: string
@@ -96,7 +106,12 @@ export type Database = {
           id?: string
           job_date?: string
           job_provider_id?: string
+          job_time?: string | null
+          latitude?: number | null
           location?: string | null
+          longitude?: number | null
+          pincode?: string | null
+          required_skills?: string[] | null
           selected_worker_id?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           title?: string
@@ -134,48 +149,120 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          job_id: string | null
+          message: string
+          metadata: Json | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          job_id?: string | null
+          message: string
+          metadata?: Json | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          job_id?: string | null
+          message?: string
+          metadata?: Json | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           company_name: string | null
           created_at: string
           email: string
+          experience_level: string | null
           first_name: string | null
           id: string
           last_name: string | null
+          latitude: number | null
           location: string | null
+          longitude: number | null
+          notification_preferences: Json | null
           phone: string | null
+          pincode: string | null
+          profile_completion_percentage: number | null
+          profile_photo_url: string | null
           role: Database["public"]["Enums"]["user_role"]
           skills: string[] | null
           updated_at: string
           user_id: string
+          worker_category: Database["public"]["Enums"]["worker_category"] | null
         }
         Insert: {
           company_name?: string | null
           created_at?: string
           email: string
+          experience_level?: string | null
           first_name?: string | null
           id?: string
           last_name?: string | null
+          latitude?: number | null
           location?: string | null
+          longitude?: number | null
+          notification_preferences?: Json | null
           phone?: string | null
+          pincode?: string | null
+          profile_completion_percentage?: number | null
+          profile_photo_url?: string | null
           role: Database["public"]["Enums"]["user_role"]
           skills?: string[] | null
           updated_at?: string
           user_id: string
+          worker_category?:
+            | Database["public"]["Enums"]["worker_category"]
+            | null
         }
         Update: {
           company_name?: string | null
           created_at?: string
           email?: string
+          experience_level?: string | null
           first_name?: string | null
           id?: string
           last_name?: string | null
+          latitude?: number | null
           location?: string | null
+          longitude?: number | null
+          notification_preferences?: Json | null
           phone?: string | null
+          pincode?: string | null
+          profile_completion_percentage?: number | null
+          profile_photo_url?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           skills?: string[] | null
           updated_at?: string
           user_id?: string
+          worker_category?:
+            | Database["public"]["Enums"]["worker_category"]
+            | null
         }
         Relationships: []
       }
@@ -203,6 +290,18 @@ export type Database = {
       }
     }
     Functions: {
+      calculate_profile_completion: {
+        Args: { profile_id: string }
+        Returns: number
+      }
+      find_nearby_jobs: {
+        Args: { radius_km?: number; worker_lat: number; worker_lng: number }
+        Returns: {
+          distance_km: number
+          job_id: string
+          title: string
+        }[]
+      }
       get_current_user_role: {
         Args: Record<PropertyKey, never>
         Returns: Database["public"]["Enums"]["user_role"]
@@ -216,6 +315,21 @@ export type Database = {
       application_status: "pending" | "accepted" | "rejected"
       job_status: "posted" | "assigned" | "completed" | "cancelled"
       user_role: "worker" | "job_provider" | "admin"
+      worker_category:
+        | "general_laborer"
+        | "construction_worker"
+        | "mechanic"
+        | "plumber"
+        | "electrician"
+        | "carpenter"
+        | "painter"
+        | "watchman"
+        | "cleaner"
+        | "gardener"
+        | "driver"
+        | "welder"
+        | "mason"
+        | "helper"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -346,6 +460,22 @@ export const Constants = {
       application_status: ["pending", "accepted", "rejected"],
       job_status: ["posted", "assigned", "completed", "cancelled"],
       user_role: ["worker", "job_provider", "admin"],
+      worker_category: [
+        "general_laborer",
+        "construction_worker",
+        "mechanic",
+        "plumber",
+        "electrician",
+        "carpenter",
+        "painter",
+        "watchman",
+        "cleaner",
+        "gardener",
+        "driver",
+        "welder",
+        "mason",
+        "helper",
+      ],
     },
   },
 } as const
