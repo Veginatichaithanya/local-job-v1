@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { WorkerSidebar } from "@/components/worker/WorkerSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 const WorkerLayout = () => {
   const { user, profile, loading } = useAuth();
@@ -28,9 +29,12 @@ const WorkerLayout = () => {
         
         <div className="flex-1 flex flex-col min-w-0">
           {/* Global header with trigger */}
-          <header className="h-14 md:h-12 flex items-center border-b bg-background px-4 sticky top-0 z-10">
-            <SidebarTrigger className="md:hidden" />
-            <h1 className="ml-4 font-semibold text-lg md:text-base truncate">Worker Portal</h1>
+          <header className="h-14 md:h-12 flex items-center justify-between border-b bg-background px-4 sticky top-0 z-10">
+            <div className="flex items-center">
+              <SidebarTrigger className="md:hidden" />
+              <h1 className="ml-4 font-semibold text-lg md:text-base truncate">Worker Portal</h1>
+            </div>
+            <NotificationBell />
           </header>
 
           <main className="flex-1 p-4 md:p-6 overflow-auto">

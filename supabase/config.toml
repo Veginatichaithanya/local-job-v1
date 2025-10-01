@@ -1,1 +1,4 @@
 project_id = "lapylqeamjgrwwcixdkb"
+
+[functions.notify-nearby-workers]
+verify_jwt = false

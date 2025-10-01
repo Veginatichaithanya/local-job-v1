@@ -17,6 +17,17 @@ export interface UserProfile {
   skills?: string[];
   company_name?: string;
   business_type?: string;
+  pincode?: string;
+  latitude?: number;
+  longitude?: number;
+  profile_photo_url?: string;
+  experience_level?: string;
+  worker_category?: string;
+  profile_completion_percentage?: number;
+  notification_preferences?: {
+    job_alerts: boolean;
+    location_radius_km: number;
+  };
 }
 
 interface AuthContextType {
@@ -60,11 +71,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         .maybeSingle();
 
       if (error) throw error;
-      setProfile(data as UserProfile);
+      
+      if (data) {
+        setProfile({
+          ...data,
+          notification_preferences: data.notification_preferences as any,
+        } as UserProfile);
+      }
     } catch (error) {
       console.error('Error fetching profile:', error);
     }
   };
+
 
   useEffect(() => {
     // Set up auth state listener
@@ -208,7 +226,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(updates as any)
         .eq('user_id', user.id);
 
       if (error) throw error;

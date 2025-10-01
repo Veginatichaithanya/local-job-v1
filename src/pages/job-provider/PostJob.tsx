@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { X, MapPin } from "lucide-react";
+import { X } from "lucide-react";
+import { LocationPicker } from "@/components/maps/LocationPicker";
 
 interface JobFormData {
   title: string;
@@ -19,6 +20,9 @@ interface JobFormData {
   wage: string;
   job_date: string;
   job_time: string;
+  pincode: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export default function PostJob() {
@@ -35,6 +39,9 @@ export default function PostJob() {
     wage: "",
     job_date: "",
     job_time: "",
+    pincode: "",
+    latitude: null,
+    longitude: null,
   });
 
   const addSkill = () => {
@@ -54,30 +61,14 @@ export default function PostJob() {
     });
   };
 
-  const getCurrentLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          // You can reverse geocode these coordinates to get an address
-          setFormData({
-            ...formData,
-            location: `Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`,
-          });
-          toast({
-            title: "Location detected",
-            description: "GPS location has been added to the job posting.",
-          });
-        },
-        (error) => {
-          toast({
-            title: "Location error",
-            description: "Unable to get your location. Please enter manually.",
-            variant: "destructive",
-          });
-        }
-      );
-    }
+  const handleLocationSelect = (locationData: any) => {
+    setFormData({
+      ...formData,
+      pincode: locationData.pincode,
+      latitude: locationData.latitude,
+      longitude: locationData.longitude,
+      location: locationData.address,
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -86,7 +77,7 @@ export default function PostJob() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.from("jobs").insert({
+      const { data: jobData, error } = await supabase.from("jobs").insert({
         job_provider_id: user.id,
         title: formData.title,
         description: formData.description,
@@ -95,13 +86,23 @@ export default function PostJob() {
         wage: parseFloat(formData.wage),
         job_date: formData.job_date,
         job_time: formData.job_time || null,
-      });
+        pincode: formData.pincode,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+      }).select().single();
 
       if (error) throw error;
 
+      // Notify nearby workers
+      if (jobData && formData.latitude && formData.longitude) {
+        await supabase.functions.invoke('notify-nearby-workers', {
+          body: { jobId: jobData.id }
+        });
+      }
+
       toast({
         title: "Job posted successfully",
-        description: "Your job has been posted and is now visible to workers.",
+        description: "Your job has been posted and nearby workers have been notified.",
       });
 
       navigate("/job-provider/jobs");
@@ -179,20 +180,13 @@ export default function PostJob() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="location">Job Location *</Label>
-              <div className="flex space-x-2">
-                <Input
-                  id="location"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  placeholder="Enter job location or address"
-                  required
-                />
-                <Button type="button" onClick={getCurrentLocation} variant="outline">
-                  <MapPin className="h-4 w-4" />
-                  GPS
-                </Button>
-              </div>
+              <Label>Job Location *</Label>
+              <LocationPicker
+                onLocationSelect={handleLocationSelect}
+                initialPincode={formData.pincode}
+                initialLat={formData.latitude || undefined}
+                initialLng={formData.longitude || undefined}
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
