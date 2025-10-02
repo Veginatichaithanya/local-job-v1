@@ -182,39 +182,53 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signIn = async (email: string, password: string, expectedRole?: UserRole) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Verify role before attempting sign in if expectedRole is provided
+      if (expectedRole) {
+        // First check if the user exists and has the correct role
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-      if (error) throw error;
+        if (authError) throw authError;
 
-      // Verify role matches expected role if provided
-      if (expectedRole && data.user) {
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .single();
+        if (authData.user) {
+          // Check role in user_roles table
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', authData.user.id)
+            .single();
 
-        if (!roleData || roleData.role !== expectedRole) {
-          await supabase.auth.signOut();
-          
-          const roleNames: Record<UserRole, string> = {
-            worker: 'Worker',
-            job_provider: 'Job Provider',
-            admin: 'Admin'
-          };
-          
-          toast({
-            title: "Access Denied",
-            description: `This account is not registered as a ${roleNames[expectedRole]}. Please use the correct login page.`,
-            variant: "destructive",
-            className: "bg-destructive text-destructive-foreground border-destructive",
-          });
+          // If role doesn't match, sign out immediately before any state updates
+          if (!roleData || roleData.role !== expectedRole) {
+            // Sign out before showing error to prevent auth state issues
+            await supabase.auth.signOut();
+            
+            const roleNames: Record<UserRole, string> = {
+              worker: 'Worker',
+              job_provider: 'Job Provider',
+              admin: 'Admin'
+            };
+            
+            toast({
+              title: "✗ Access Denied",
+              description: `This account is not registered as a ${roleNames[expectedRole]}. Please use the correct login page.`,
+              variant: "destructive",
+              className: "bg-destructive text-destructive-foreground border-destructive",
+            });
 
-          return { error: new Error('Role mismatch') };
+            return { error: new Error('Role mismatch') };
+          }
         }
+      } else {
+        // No role verification needed, just sign in
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) throw error;
       }
 
       toast({
@@ -229,6 +243,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       
       if (error.message?.includes('email not confirmed')) {
         errorMessage = "Please check your email and verify your account first";
+      } else if (error.message === 'Role mismatch') {
+        // Don't show additional error for role mismatch, already handled
+        return { error };
       }
 
       toast({

@@ -41,6 +41,7 @@ export function LocationPicker({ onLocationSelect, initialPincode, initialLat, i
   const [position, setPosition] = useState<[number, number]>([initialLat || 20.5937, initialLng || 78.9629]); // India center
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mapKey, setMapKey] = useState(0);
   const { toast } = useToast();
 
   const lookupPincode = async () => {
@@ -69,6 +70,7 @@ export function LocationPicker({ onLocationSelect, initialPincode, initialLat, i
 
         setPosition([lat, lng]);
         setAddress(displayName);
+        setMapKey(prev => prev + 1); // Force map re-render with new center
         
         onLocationSelect({
           pincode,
@@ -164,7 +166,7 @@ export function LocationPicker({ onLocationSelect, initialPincode, initialLat, i
           center={position}
           zoom={13}
           style={{ height: "100%", width: "100%" }}
-          key={`${position[0]}-${position[1]}`}
+          key={mapKey}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
