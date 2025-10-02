@@ -36,7 +36,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   signUp: (email: string, password: string, userData: { firstName: string; lastName: string; role: UserRole; companyName?: string }) => Promise<{ error: any }>;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signIn: (email: string, password: string, expectedRole?: UserRole) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: any }>;
 }
@@ -143,13 +143,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       // Check if email confirmation is required
       if (data.user && !data.session) {
         toast({
-          title: "Account created successfully!",
+          title: "✓ Account created successfully!",
           description: "Please check your email to verify your account before signing in.",
+          className: "bg-success text-success-foreground border-success",
         });
       } else if (data.session) {
         toast({
-          title: "Account created successfully!",
+          title: "✓ Account created successfully!",
           description: "You can now access your dashboard.",
+          className: "bg-success text-success-foreground border-success",
         });
       }
 
@@ -168,23 +170,58 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
 
       toast({
-        title: "Sign up failed",
+        title: "✗ Sign up failed",
         description: errorMessage,
         variant: "destructive",
+        className: "bg-destructive text-destructive-foreground border-destructive",
       });
 
       return { error };
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, expectedRole?: UserRole) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
+
+      // Verify role matches expected role if provided
+      if (expectedRole && data.user) {
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (!roleData || roleData.role !== expectedRole) {
+          await supabase.auth.signOut();
+          
+          const roleNames: Record<UserRole, string> = {
+            worker: 'Worker',
+            job_provider: 'Job Provider',
+            admin: 'Admin'
+          };
+          
+          toast({
+            title: "Access Denied",
+            description: `This account is not registered as a ${roleNames[expectedRole]}. Please use the correct login page.`,
+            variant: "destructive",
+            className: "bg-destructive text-destructive-foreground border-destructive",
+          });
+
+          return { error: new Error('Role mismatch') };
+        }
+      }
+
+      toast({
+        title: "✓ Login Successful",
+        description: "Welcome back!",
+        className: "bg-success text-success-foreground border-success",
+      });
 
       return { error: null };
     } catch (error: any) {
@@ -195,9 +232,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
 
       toast({
-        title: "Sign in failed",
+        title: "✗ Sign in failed",
         description: errorMessage,
         variant: "destructive",
+        className: "bg-destructive text-destructive-foreground border-destructive",
       });
 
       return { error };
@@ -212,8 +250,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setProfile(null);
       
       toast({
-        title: "Signed out successfully",
+        title: "✓ Signed out successfully",
         description: "You have been logged out.",
+        className: "bg-success text-success-foreground border-success",
       });
     } catch (error) {
       console.error('Error signing out:', error);
@@ -235,16 +274,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       await fetchProfile(user.id);
 
       toast({
-        title: "Profile updated",
+        title: "✓ Profile updated",
         description: "Your profile has been updated successfully.",
+        className: "bg-success text-success-foreground border-success",
       });
 
       return { error: null };
     } catch (error: any) {
       toast({
-        title: "Update failed",
+        title: "✗ Update failed",
         description: "Failed to update profile. Please try again.",
         variant: "destructive",
+        className: "bg-destructive text-destructive-foreground border-destructive",
       });
 
       return { error };

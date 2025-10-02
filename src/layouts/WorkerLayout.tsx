@@ -19,7 +19,7 @@ const WorkerLayout = () => {
 
   // Redirect if not authenticated or not a worker
   if (!user || !profile || profile.role !== 'worker') {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to="/login/worker" replace />;
   }
 
   return (

@@ -12,7 +12,7 @@ export default function JobProviderLayout() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        navigate("/auth");
+        navigate("/login/job-provider");
       } else if (profile?.role !== "job_provider") {
         navigate("/role-selection");
       }

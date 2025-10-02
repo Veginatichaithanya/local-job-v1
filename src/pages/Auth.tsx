@@ -52,7 +52,8 @@ const Auth = () => {
     e.preventDefault();
     setIsLoading(true);
     
-    const { error } = await signIn(signInEmail, signInPassword);
+    // Pass the expected role for validation
+    const { error } = await signIn(signInEmail, signInPassword, currentRole || undefined);
     
     if (!error) {
       // Let the useEffect handle redirection
