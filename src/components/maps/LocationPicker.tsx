@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -28,21 +28,32 @@ interface LocationPickerProps {
 }
 
 function MapClickHandler({ onLocationClick }: { onLocationClick: (lat: number, lng: number) => void }) {
-  useMapEvents({
+  const map = useMapEvents({
     click: (e) => {
       onLocationClick(e.latlng.lat, e.latlng.lng);
     },
   });
-  return null;
+  
+  // Return a fragment to satisfy React's requirements
+  return <></>;
 }
 
 export function LocationPicker({ onLocationSelect, initialPincode, initialLat, initialLng }: LocationPickerProps) {
   const [pincode, setPincode] = useState(initialPincode || "");
-  const [position, setPosition] = useState<[number, number]>([initialLat || 20.5937, initialLng || 78.9629]); // India center
+  const [position, setPosition] = useState<[number, number]>([initialLat || 20.5937, initialLng || 78.9629]);
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mapKey, setMapKey] = useState(0);
+  const [showMap, setShowMap] = useState(false);
   const { toast } = useToast();
+
+  // Memoize map center to prevent unnecessary re-renders
+  const mapCenter = useMemo(() => position, [position[0], position[1]]);
+
+  useEffect(() => {
+    // Delay map initialization to avoid context issues
+    const timer = setTimeout(() => setShowMap(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   const lookupPincode = async () => {
     if (!pincode || pincode.length < 6) {
@@ -70,7 +81,6 @@ export function LocationPicker({ onLocationSelect, initialPincode, initialLat, i
 
         setPosition([lat, lng]);
         setAddress(displayName);
-        setMapKey(prev => prev + 1); // Force map re-render with new center
         
         onLocationSelect({
           pincode,
@@ -161,21 +171,27 @@ export function LocationPicker({ onLocationSelect, initialPincode, initialLat, i
         </div>
       )}
 
-      <div className="h-[400px] rounded-lg overflow-hidden border">
-        <MapContainer
-          center={position}
-          zoom={13}
-          style={{ height: "100%", width: "100%" }}
-          key={mapKey}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Marker position={position} />
-          <MapClickHandler onLocationClick={handleMapClick} />
-        </MapContainer>
-      </div>
+      {showMap ? (
+        <div className="h-[400px] rounded-lg overflow-hidden border">
+          <MapContainer
+            center={mapCenter}
+            zoom={13}
+            style={{ height: "100%", width: "100%" }}
+            scrollWheelZoom={false}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <Marker position={position} />
+            <MapClickHandler onLocationClick={handleMapClick} />
+          </MapContainer>
+        </div>
+      ) : (
+        <div className="h-[400px] rounded-lg overflow-hidden border bg-muted flex items-center justify-center">
+          <p className="text-muted-foreground">Loading map...</p>
+        </div>
+      )}
       
       <p className="text-xs text-muted-foreground">
         Click on the map to select a location or enter a pincode to search
