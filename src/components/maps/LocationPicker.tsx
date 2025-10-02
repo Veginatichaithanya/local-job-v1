@@ -1,19 +1,12 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import L from "leaflet";
+import LeafletBasicMap from "@/components/maps/LeafletBasicMap";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-// Fix for default marker icon
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-});
+// Default marker icon config is applied inside LeafletBasicMap
 
 interface LocationPickerProps {
   onLocationSelect: (data: {
@@ -50,16 +43,7 @@ class MapErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
-function MapClickHandler({ onLocationClick }: { onLocationClick: (lat: number, lng: number) => void }) {
-  const map = useMapEvents({
-    click: (e) => {
-      onLocationClick(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  
-  // Return a fragment to satisfy React's requirements
-  return <></>;
-}
+// MapClickHandler not needed: click handled in LeafletBasicMap
 
 export function LocationPicker({ onLocationSelect, initialPincode, initialLat, initialLng }: LocationPickerProps) {
   const [pincode, setPincode] = useState(initialPincode || "");
@@ -197,19 +181,13 @@ export function LocationPicker({ onLocationSelect, initialPincode, initialLat, i
       {showMap ? (
         <MapErrorBoundary>
           <div className="h-[400px] rounded-lg overflow-hidden border">
-            <MapContainer
+            <LeafletBasicMap
               center={mapCenter}
+              markerPosition={position}
               zoom={13}
-              style={{ height: "100%", width: "100%" }}
               scrollWheelZoom={false}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <Marker position={position} />
-              <MapClickHandler onLocationClick={handleMapClick} />
-            </MapContainer>
+              onMapClick={handleMapClick}
+            />
           </div>
         </MapErrorBoundary>
       ) : (
