@@ -13,6 +13,8 @@ interface Job {
   longitude: number;
   wage: number;
   location: string;
+  pincode?: string;
+  notification_scope: "local" | "all";
 }
 
 interface Worker {
@@ -78,14 +80,26 @@ serve(async (req) => {
       );
     }
 
-    // Fetch all workers with location data and profile completion >= 75%
-    const { data: workers, error: workersError } = await supabase
+    // Build worker query based on notification scope
+    let workersQuery = supabase
       .from('profiles')
-      .select('user_id, latitude, longitude, notification_preferences, profile_completion_percentage')
+      .select('user_id, latitude, longitude, pincode, notification_preferences, profile_completion_percentage')
       .eq('role', 'worker')
-      .gte('profile_completion_percentage', 75)
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);
+
+    // Apply filters based on notification scope
+    if (job.notification_scope === 'local' && job.pincode) {
+      // Local: Only workers in the same pincode
+      workersQuery = workersQuery.eq('pincode', job.pincode);
+      console.log(`Local scope: filtering by pincode ${job.pincode}`);
+    } else if (job.notification_scope === 'all') {
+      // All: Only workers with 100% completed profiles
+      workersQuery = workersQuery.gte('profile_completion_percentage', 100);
+      console.log('All scope: filtering workers with completed profiles');
+    }
+
+    const { data: workers, error: workersError } = await workersQuery;
 
     if (workersError) {
       console.error('Error fetching workers:', workersError);
@@ -94,6 +108,8 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`Found ${workers?.length || 0} eligible workers for notification scope: ${job.notification_scope}`);
 
     // Find workers within radius and create notifications
     const notifications = [];
@@ -108,16 +124,25 @@ serve(async (req) => {
       const radiusKm = worker.notification_preferences?.location_radius_km || 10;
       const jobAlerts = worker.notification_preferences?.job_alerts ?? true;
 
-      if (jobAlerts && distance <= radiusKm) {
+      // For local scope, notify all workers in pincode (already filtered)
+      // For all scope, check distance radius
+      const shouldNotify = jobAlerts && (job.notification_scope === 'local' || distance <= radiusKm);
+
+      if (shouldNotify) {
+        const locationMsg = job.notification_scope === 'local' 
+          ? 'in your area' 
+          : `${distance.toFixed(1)}km away`;
+
         notifications.push({
           user_id: worker.user_id,
           job_id: jobId,
-          title: 'New Job Nearby!',
-          message: `${job.title} - ₹${job.wage}/day - ${distance.toFixed(1)}km away`,
+          title: 'New Job Available!',
+          message: `${job.title} - ₹${job.wage}/day - ${locationMsg}`,
           type: 'job_alert',
           metadata: {
             distance_km: distance,
             job_location: job.location,
+            notification_scope: job.notification_scope,
           },
         });
       }

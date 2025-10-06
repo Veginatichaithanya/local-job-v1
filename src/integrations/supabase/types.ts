@@ -74,6 +74,7 @@ export type Database = {
           latitude: number | null
           location: string | null
           longitude: number | null
+          notification_scope: string
           pincode: string | null
           required_skills: string[] | null
           selected_worker_id: string | null
@@ -92,6 +93,7 @@ export type Database = {
           latitude?: number | null
           location?: string | null
           longitude?: number | null
+          notification_scope?: string
           pincode?: string | null
           required_skills?: string[] | null
           selected_worker_id?: string | null
@@ -110,6 +112,7 @@ export type Database = {
           latitude?: number | null
           location?: string | null
           longitude?: number | null
+          notification_scope?: string
           pincode?: string | null
           required_skills?: string[] | null
           selected_worker_id?: string | null

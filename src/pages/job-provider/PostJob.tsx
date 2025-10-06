@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { X } from "lucide-react";
 import { LocationPicker } from "@/components/maps/LocationPicker";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface JobFormData {
   title: string;
@@ -23,6 +24,7 @@ interface JobFormData {
   pincode: string;
   latitude: number | null;
   longitude: number | null;
+  notification_scope: "local" | "all";
 }
 
 export default function PostJob() {
@@ -42,6 +44,7 @@ export default function PostJob() {
     pincode: "",
     latitude: null,
     longitude: null,
+    notification_scope: "all",
   });
 
   const addSkill = () => {
@@ -89,6 +92,7 @@ export default function PostJob() {
         pincode: formData.pincode,
         latitude: formData.latitude,
         longitude: formData.longitude,
+        notification_scope: formData.notification_scope,
       }).select().single();
 
       if (error) throw error;
@@ -187,6 +191,35 @@ export default function PostJob() {
                 initialLat={formData.latitude || undefined}
                 initialLng={formData.longitude || undefined}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Notification Scope *</Label>
+              <RadioGroup
+                value={formData.notification_scope}
+                onValueChange={(value: "local" | "all") =>
+                  setFormData({ ...formData, notification_scope: value })
+                }
+                className="flex gap-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="local" id="local" />
+                  <Label htmlFor="local" className="font-normal cursor-pointer">
+                    Local (Same Pincode Only)
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="all" id="all" />
+                  <Label htmlFor="all" className="font-normal cursor-pointer">
+                    All (All Completed Profiles)
+                  </Label>
+                </div>
+              </RadioGroup>
+              <p className="text-sm text-muted-foreground">
+                {formData.notification_scope === "local"
+                  ? "Only workers in your pincode area will be notified"
+                  : "All workers with completed profiles will be notified"}
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
