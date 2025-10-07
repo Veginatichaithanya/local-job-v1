@@ -198,6 +198,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          business_type: string | null
           company_name: string | null
           created_at: string
           email: string
@@ -220,6 +221,7 @@ export type Database = {
           worker_category: Database["public"]["Enums"]["worker_category"] | null
         }
         Insert: {
+          business_type?: string | null
           company_name?: string | null
           created_at?: string
           email: string
@@ -244,6 +246,7 @@ export type Database = {
             | null
         }
         Update: {
+          business_type?: string | null
           company_name?: string | null
           created_at?: string
           email?: string
