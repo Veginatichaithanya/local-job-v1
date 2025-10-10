@@ -106,6 +106,16 @@ const AvailableJobs = () => {
     return R * c;
   };
 
+  const getSkillMatch = (jobSkills: string[] | null, workerSkills: string[] | null): string[] => {
+    if (!jobSkills || !workerSkills) return [];
+    
+    return jobSkills.filter(jobSkill =>
+      workerSkills.some(workerSkill => 
+        workerSkill.toLowerCase() === jobSkill.toLowerCase()
+      )
+    );
+  };
+
   const filteredJobs = jobs
     .filter(job =>
       job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -358,15 +368,40 @@ const AvailableJobs = () => {
                       </div>
                     </div>
 
+                    {profile?.skills && job.required_skills && job.required_skills.length > 0 && (() => {
+                      const matchedSkills = getSkillMatch(job.required_skills, profile.skills);
+                      const matchPercentage = Math.round((matchedSkills.length / job.required_skills.length) * 100);
+                      return matchedSkills.length > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <Badge variant={matchPercentage >= 50 ? "default" : "secondary"} className="text-xs">
+                            ✓ {matchedSkills.length}/{job.required_skills.length} skills match ({matchPercentage}%)
+                          </Badge>
+                        </div>
+                      ) : null;
+                    })()}
+
                     {job.required_skills && job.required_skills.length > 0 && (
                       <>
                         <Separator />
-                        <div className="flex flex-wrap gap-2">
-                          {job.required_skills.map((skill, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {skill}
-                            </Badge>
-                          ))}
+                        <div>
+                          <p className="text-sm font-medium mb-2">Required Skills:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {job.required_skills.map((skill, index) => {
+                              const isMatched = profile?.skills?.some(
+                                workerSkill => workerSkill.toLowerCase() === skill.toLowerCase()
+                              );
+                              return (
+                                <Badge 
+                                  key={index} 
+                                  variant={isMatched ? "default" : "secondary"}
+                                  className={isMatched ? "bg-primary text-primary-foreground" : "text-xs"}
+                                >
+                                  {isMatched && "✓ "}
+                                  {skill}
+                                </Badge>
+                              );
+                            })}
+                          </div>
                         </div>
                       </>
                     )}

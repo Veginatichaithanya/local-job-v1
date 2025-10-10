@@ -39,6 +39,35 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
+function hasMatchingSkills(workerSkills: string[] | null, jobSkills: string[] | null): boolean {
+  // If job has no required skills, match all workers
+  if (!jobSkills || jobSkills.length === 0) {
+    return true;
+  }
+  
+  // If worker has no skills, they don't match jobs with requirements
+  if (!workerSkills || workerSkills.length === 0) {
+    return false;
+  }
+  
+  // Check if worker has at least ONE matching skill (case-insensitive)
+  return jobSkills.some(jobSkill => 
+    workerSkills.some(workerSkill => 
+      workerSkill.toLowerCase() === jobSkill.toLowerCase()
+    )
+  );
+}
+
+function getMatchedSkills(workerSkills: string[] | null, jobSkills: string[] | null): string[] {
+  if (!jobSkills || !workerSkills) return [];
+  
+  return jobSkills.filter(jobSkill =>
+    workerSkills.some(workerSkill => 
+      workerSkill.toLowerCase() === jobSkill.toLowerCase()
+    )
+  );
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -83,7 +112,7 @@ serve(async (req) => {
     // Build worker query based on notification scope
     let workersQuery = supabase
       .from('profiles')
-      .select('user_id, latitude, longitude, pincode, notification_preferences, profile_completion_percentage')
+      .select('user_id, latitude, longitude, pincode, skills, notification_preferences, profile_completion_percentage')
       .eq('role', 'worker')
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);
@@ -124,6 +153,14 @@ serve(async (req) => {
       const radiusKm = worker.notification_preferences?.location_radius_km || 10;
       const jobAlerts = worker.notification_preferences?.job_alerts ?? true;
 
+      // Check if worker has matching skills
+      const hasSkills = hasMatchingSkills(worker.skills, job.required_skills);
+      
+      if (!hasSkills) {
+        console.log(`Worker ${worker.user_id} skipped: no matching skills for job ${jobId}`);
+        continue; // Skip this worker
+      }
+
       // For local scope, notify all workers in pincode (already filtered)
       // For all scope, check distance radius
       const shouldNotify = jobAlerts && (job.notification_scope === 'local' || distance <= radiusKm);
@@ -133,16 +170,19 @@ serve(async (req) => {
           ? 'in your area' 
           : `${distance.toFixed(1)}km away`;
 
+        const matchedSkills = getMatchedSkills(worker.skills, job.required_skills);
+
         notifications.push({
           user_id: worker.user_id,
           job_id: jobId,
-          title: 'New Job Available!',
+          title: 'New Job Match!',
           message: `${job.title} - ₹${job.wage}/day - ${locationMsg}`,
           type: 'job_alert',
           metadata: {
             distance_km: distance,
             job_location: job.location,
             notification_scope: job.notification_scope,
+            matched_skills: matchedSkills,
           },
         });
       }
