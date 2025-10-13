@@ -13,6 +13,7 @@ export interface UserProfile {
   last_name?: string;
   role: UserRole;
   phone?: string;
+  alternate_phone?: string;
   location?: string;
   skills?: string[];
   company_name?: string;

@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { MapPin, Phone, Mail, User, Briefcase, Plus, X, Upload, Camera, AlertCircle } from "lucide-react";
+import { MapPin, Phone, Mail, User, Briefcase, Plus, X, Upload, Camera, AlertCircle, Trash2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { LocationPicker } from "@/components/maps/LocationPicker";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,12 +39,15 @@ const WorkerProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [profileCompletion, setProfileCompletion] = useState(0);
+  const [previousWorks, setPreviousWorks] = useState<any[]>([]);
+  const [isAddingWork, setIsAddingWork] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
     first_name: profile?.first_name || '',
     last_name: profile?.last_name || '',
     phone: profile?.phone || '',
+    alternate_phone: profile?.alternate_phone || '',
     location: profile?.location || '',
     skills: profile?.skills || [],
     pincode: profile?.pincode || '',
@@ -54,6 +58,14 @@ const WorkerProfile = () => {
     worker_category: profile?.worker_category || '',
   });
 
+  const [newWork, setNewWork] = useState({
+    company_name: '',
+    job_title: '',
+    description: '',
+    duration: '',
+    location: '',
+  });
+
   const [newSkill, setNewSkill] = useState('');
 
   useEffect(() => {
@@ -62,6 +74,7 @@ const WorkerProfile = () => {
         first_name: profile.first_name || '',
         last_name: profile.last_name || '',
         phone: profile.phone || '',
+        alternate_phone: profile.alternate_phone || '',
         location: profile.location || '',
         skills: profile.skills || [],
         pincode: profile.pincode || '',
@@ -75,8 +88,48 @@ const WorkerProfile = () => {
     }
   }, [profile]);
 
+  useEffect(() => {
+    if (user) {
+      fetchPreviousWorks();
+    }
+  }, [user]);
+
+  const fetchPreviousWorks = async () => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('worker_previous_works' as any)
+      .select('*')
+      .eq('worker_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching previous works:', error);
+    } else {
+      setPreviousWorks(data || []);
+    }
+  };
+
+  const fetchProfileCompletion = async () => {
+    if (!profile?.id) return;
+
+    const { data, error } = await supabase.rpc('calculate_profile_completion', {
+      profile_id: profile.id
+    });
+
+    if (!error && data !== null) {
+      setProfileCompletion(data);
+    }
+  };
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handlePhoneChange = (field: 'phone' | 'alternate_phone', value: string) => {
+    // Only allow digits and limit to 10
+    const cleaned = value.replace(/\D/g, '').slice(0, 10);
+    setFormData(prev => ({ ...prev, [field]: cleaned }));
   };
 
   const addSkill = () => {
@@ -155,6 +208,25 @@ const WorkerProfile = () => {
   };
 
   const handleSave = async () => {
+    // Validate phone numbers
+    if (formData.phone && formData.phone.length !== 10) {
+      toast({
+        title: "Invalid Phone Number",
+        description: "Phone number must be exactly 10 digits",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (formData.alternate_phone && formData.alternate_phone.length !== 10) {
+      toast({
+        title: "Invalid Alternate Phone Number",
+        description: "Alternate phone number must be exactly 10 digits",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     const { error } = await updateProfile(formData);
@@ -166,9 +238,10 @@ const WorkerProfile = () => {
         variant: "destructive",
       });
     } else {
+      await fetchProfileCompletion();
       toast({
         title: "Success",
-        description: "Profile updated successfully!",
+        description: `Profile updated successfully! Completion: ${profileCompletion}%`,
       });
       setIsEditing(false);
     }
@@ -176,11 +249,66 @@ const WorkerProfile = () => {
     setIsLoading(false);
   };
 
+  const addPreviousWork = async () => {
+    if (!user || !newWork.company_name || !newWork.job_title) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in company name and job title",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('worker_previous_works' as any)
+      .insert([{ ...newWork, worker_id: user.id }]);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add previous work",
+        variant: "destructive",
+      });
+    } else {
+      await fetchPreviousWorks();
+      await fetchProfileCompletion();
+      setNewWork({ company_name: '', job_title: '', description: '', duration: '', location: '' });
+      setIsAddingWork(false);
+      toast({
+        title: "Success",
+        description: `Previous work added! Profile completion: ${profileCompletion}%`,
+      });
+    }
+  };
+
+  const deletePreviousWork = async (workId: string) => {
+    const { error } = await supabase
+      .from('worker_previous_works' as any)
+      .delete()
+      .eq('id', workId);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete previous work",
+        variant: "destructive",
+      });
+    } else {
+      await fetchPreviousWorks();
+      await fetchProfileCompletion();
+      toast({
+        title: "Success",
+        description: "Previous work deleted",
+      });
+    }
+  };
+
   const handleCancel = () => {
     setFormData({
       first_name: profile?.first_name || '',
       last_name: profile?.last_name || '',
       phone: profile?.phone || '',
+      alternate_phone: profile?.alternate_phone || '',
       location: profile?.location || '',
       skills: profile?.skills || [],
       pincode: profile?.pincode || '',
@@ -357,22 +485,58 @@ const WorkerProfile = () => {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone Number</Label>
-            {isEditing ? (
-              <Input
-                id="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
-                placeholder="Enter your phone number"
-              />
-            ) : (
-              <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
-                <Phone className="h-4 w-4 text-muted-foreground" />
-                <span>{profile?.phone || 'Not provided'}</span>
-              </div>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number *</Label>
+              {isEditing ? (
+                <div className="flex gap-2">
+                  <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/50 text-sm">
+                    🇮🇳 +91
+                  </div>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => handlePhoneChange('phone', e.target.value)}
+                    placeholder="10-digit number"
+                    maxLength={10}
+                    pattern="[0-9]{10}"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span>🇮🇳 +91 {profile?.phone || 'Not provided'}</span>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">Enter 10-digit Indian mobile number</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="alternate_phone">Alternate Phone Number</Label>
+              {isEditing ? (
+                <div className="flex gap-2">
+                  <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/50 text-sm">
+                    🇮🇳 +91
+                  </div>
+                  <Input
+                    id="alternate_phone"
+                    type="tel"
+                    value={formData.alternate_phone}
+                    onChange={(e) => handlePhoneChange('alternate_phone', e.target.value)}
+                    placeholder="10-digit number"
+                    maxLength={10}
+                    pattern="[0-9]{10}"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span>{profile?.alternate_phone ? `🇮🇳 +91 ${profile.alternate_phone}` : 'Not provided'}</span>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">Optional backup contact number</p>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -530,6 +694,135 @@ const WorkerProfile = () => {
               </p>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Previous Work Experience */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Previous Work Experience</CardTitle>
+              <CardDescription>
+                Add your previous work history to increase profile completion (+15%)
+              </CardDescription>
+            </div>
+            {!isAddingWork && (
+              <Button onClick={() => setIsAddingWork(true)} size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Work
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isAddingWork && (
+            <div className="p-4 border rounded-lg space-y-4 bg-muted/50">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="company_name">Company Name *</Label>
+                  <Input
+                    id="company_name"
+                    value={newWork.company_name}
+                    onChange={(e) => setNewWork({ ...newWork, company_name: e.target.value })}
+                    placeholder="Enter company name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="job_title">Job Title *</Label>
+                  <Input
+                    id="job_title"
+                    value={newWork.job_title}
+                    onChange={(e) => setNewWork({ ...newWork, job_title: e.target.value })}
+                    placeholder="Enter job title"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="duration">Duration</Label>
+                  <Input
+                    id="duration"
+                    value={newWork.duration}
+                    onChange={(e) => setNewWork({ ...newWork, duration: e.target.value })}
+                    placeholder="e.g., 2 years, 6 months"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="work_location">Location</Label>
+                  <Input
+                    id="work_location"
+                    value={newWork.location}
+                    onChange={(e) => setNewWork({ ...newWork, location: e.target.value })}
+                    placeholder="Enter work location"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Job Description</Label>
+                <Textarea
+                  id="description"
+                  value={newWork.description}
+                  onChange={(e) => setNewWork({ ...newWork, description: e.target.value })}
+                  placeholder="Describe your responsibilities and achievements"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={addPreviousWork}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Work
+                </Button>
+                <Button variant="outline" onClick={() => {
+                  setIsAddingWork(false);
+                  setNewWork({ company_name: '', job_title: '', description: '', duration: '', location: '' });
+                }}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {previousWorks.length > 0 ? (
+            <div className="space-y-3">
+              {previousWorks.map((work) => (
+                <div key={work.id} className="p-4 border rounded-lg space-y-2 hover:bg-muted/50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-semibold">{work.job_title}</h4>
+                      <p className="text-sm text-muted-foreground">{work.company_name}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deletePreviousWork(work.id)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {(work.duration || work.location) && (
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      {work.duration && <span>📅 {work.duration}</span>}
+                      {work.location && <span>📍 {work.location}</span>}
+                    </div>
+                  )}
+                  {work.description && (
+                    <p className="text-sm mt-2">{work.description}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Briefcase className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No previous work experience added yet.</p>
+              <p className="text-xs">Add your work history to boost your profile completion!</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
