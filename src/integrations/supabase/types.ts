@@ -77,6 +77,7 @@ export type Database = {
           notification_scope: string
           pincode: string | null
           required_skills: string[] | null
+          requires_resume: boolean | null
           selected_worker_id: string | null
           status: Database["public"]["Enums"]["job_status"]
           title: string
@@ -96,6 +97,7 @@ export type Database = {
           notification_scope?: string
           pincode?: string | null
           required_skills?: string[] | null
+          requires_resume?: boolean | null
           selected_worker_id?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           title: string
@@ -115,6 +117,7 @@ export type Database = {
           notification_scope?: string
           pincode?: string | null
           required_skills?: string[] | null
+          requires_resume?: boolean | null
           selected_worker_id?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           title?: string
@@ -214,6 +217,8 @@ export type Database = {
           pincode: string | null
           profile_completion_percentage: number | null
           profile_photo_url: string | null
+          resume_uploaded_at: string | null
+          resume_url: string | null
           role: Database["public"]["Enums"]["user_role"]
           skills: string[] | null
           updated_at: string
@@ -237,6 +242,8 @@ export type Database = {
           pincode?: string | null
           profile_completion_percentage?: number | null
           profile_photo_url?: string | null
+          resume_uploaded_at?: string | null
+          resume_url?: string | null
           role: Database["public"]["Enums"]["user_role"]
           skills?: string[] | null
           updated_at?: string
@@ -262,6 +269,8 @@ export type Database = {
           pincode?: string | null
           profile_completion_percentage?: number | null
           profile_photo_url?: string | null
+          resume_uploaded_at?: string | null
+          resume_url?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           skills?: string[] | null
           updated_at?: string
@@ -293,6 +302,83 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_previous_works: {
+        Row: {
+          company_name: string
+          created_at: string
+          description: string | null
+          duration: string | null
+          id: string
+          job_title: string
+          location: string | null
+          updated_at: string
+          worker_id: string
+        }
+        Insert: {
+          company_name: string
+          created_at?: string
+          description?: string | null
+          duration?: string | null
+          id?: string
+          job_title: string
+          location?: string | null
+          updated_at?: string
+          worker_id: string
+        }
+        Update: {
+          company_name?: string
+          created_at?: string
+          description?: string | null
+          duration?: string | null
+          id?: string
+          job_title?: string
+          location?: string | null
+          updated_at?: string
+          worker_id?: string
+        }
+        Relationships: []
+      }
+      worker_ratings: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string
+          job_provider_id: string
+          rating: number
+          review: string | null
+          updated_at: string
+          worker_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id: string
+          job_provider_id: string
+          rating: number
+          review?: string | null
+          updated_at?: string
+          worker_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string
+          job_provider_id?: string
+          rating?: number
+          review?: string | null
+          updated_at?: string
+          worker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worker_ratings_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       admin_user_details: {
@@ -315,6 +401,14 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_rating_summary: {
+        Row: {
+          average_rating: number | null
+          total_ratings: number | null
+          worker_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       calculate_profile_completion: {
@@ -330,7 +424,7 @@ export type Database = {
         }[]
       }
       get_current_user_role: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
       get_user_role: {
@@ -344,10 +438,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      is_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       application_status: "pending" | "accepted" | "rejected"

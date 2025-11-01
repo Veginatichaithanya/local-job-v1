@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { X } from "lucide-react";
+import { X, FileText } from "lucide-react";
 import { LocationPicker } from "@/components/maps/LocationPicker";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface JobFormData {
   title: string;
@@ -25,6 +26,7 @@ interface JobFormData {
   latitude: number | null;
   longitude: number | null;
   notification_scope: "local" | "all";
+  requires_resume: boolean;
 }
 
 export default function PostJob() {
@@ -45,6 +47,7 @@ export default function PostJob() {
     latitude: null,
     longitude: null,
     notification_scope: "all",
+    requires_resume: false,
   });
 
   const addSkill = () => {
@@ -93,6 +96,7 @@ export default function PostJob() {
         latitude: formData.latitude,
         longitude: formData.longitude,
         notification_scope: formData.notification_scope,
+        requires_resume: formData.requires_resume,
       }).select().single();
 
       if (error) throw error;
@@ -220,6 +224,20 @@ export default function PostJob() {
                   ? "Only workers in your pincode area will be notified"
                   : "All workers with completed profiles will be notified"}
               </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="requires_resume"
+                checked={formData.requires_resume}
+                onCheckedChange={(checked) => 
+                  setFormData({ ...formData, requires_resume: checked as boolean })
+                }
+              />
+              <Label htmlFor="requires_resume" className="font-normal cursor-pointer flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Require resume for this job
+              </Label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

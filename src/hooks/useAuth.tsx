@@ -29,6 +29,8 @@ export interface UserProfile {
     job_alerts: boolean;
     location_radius_km: number;
   };
+  resume_url?: string;
+  resume_uploaded_at?: string;
 }
 
 interface AuthContextType {

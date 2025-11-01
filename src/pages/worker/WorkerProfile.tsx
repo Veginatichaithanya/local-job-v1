@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { MapPin, Phone, Mail, User, Briefcase, Plus, X, Upload, Camera, AlertCircle, Trash2 } from "lucide-react";
+import { MapPin, Phone, Mail, User, Briefcase, Plus, X, Upload, Camera, AlertCircle, Trash2, FileText } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { LocationPicker } from "@/components/maps/LocationPicker";
@@ -41,6 +41,8 @@ const WorkerProfile = () => {
   const [profileCompletion, setProfileCompletion] = useState(0);
   const [previousWorks, setPreviousWorks] = useState<any[]>([]);
   const [isAddingWork, setIsAddingWork] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [isParsingResume, setIsParsingResume] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -56,6 +58,7 @@ const WorkerProfile = () => {
     profile_photo_url: profile?.profile_photo_url || '',
     experience_level: profile?.experience_level || '',
     worker_category: profile?.worker_category || '',
+    resume_url: profile?.resume_url || '',
   });
 
   const [newWork, setNewWork] = useState({
@@ -83,6 +86,7 @@ const WorkerProfile = () => {
         profile_photo_url: profile.profile_photo_url || '',
         experience_level: profile.experience_level || '',
         worker_category: profile.worker_category || '',
+        resume_url: profile.resume_url || '',
       });
       setProfileCompletion(profile.profile_completion_percentage || 0);
     }
@@ -303,6 +307,156 @@ const WorkerProfile = () => {
     }
   };
 
+  const handleResumeFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      
+      // Validate file size (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload a resume smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Validate file type
+      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a PDF, DOC, or DOCX file",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setResumeFile(file);
+    }
+  };
+
+  const handleResumeUpload = async () => {
+    if (!resumeFile || !user) return;
+    
+    setIsParsingResume(true);
+    
+    try {
+      // 1. Upload to storage
+      const fileExt = resumeFile.name.split('.').pop();
+      const fileName = `${user.id}/resume_${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('resumes')
+        .upload(fileName, resumeFile, { upsert: true });
+      
+      if (uploadError) throw uploadError;
+      
+      // 2. Get URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('resumes')
+        .getPublicUrl(fileName);
+      
+      // 3. Call parse-resume edge function
+      const { data: parsedData, error: parseError } = await supabase.functions.invoke('parse-resume', {
+        body: { resumeUrl: publicUrl }
+      });
+      
+      if (parseError) throw parseError;
+      
+      // 4. Merge parsed data with existing form data
+      const uniqueSkills = [...new Set([...formData.skills, ...(parsedData.skills || [])])];
+      
+      setFormData(prev => ({
+        ...prev,
+        skills: uniqueSkills,
+        location: parsedData.location?.address || prev.location,
+        pincode: parsedData.location?.pincode || prev.pincode,
+        resume_url: publicUrl,
+      }));
+      
+      // 5. Add previous works to database
+      if (parsedData.previous_works?.length > 0) {
+        for (const work of parsedData.previous_works) {
+          await supabase.from('worker_previous_works').insert({
+            worker_id: user.id,
+            company_name: work.company_name,
+            job_title: work.job_title,
+            duration: work.duration || '',
+            description: work.description || '',
+            location: work.location || '',
+          });
+        }
+        await fetchPreviousWorks();
+      }
+      
+      // 6. Update profile with resume URL
+      await updateProfile({ resume_url: publicUrl, resume_uploaded_at: new Date().toISOString() });
+      
+      toast({
+        title: "Resume parsed successfully!",
+        description: `Extracted ${parsedData.skills?.length || 0} skills and ${parsedData.previous_works?.length || 0} work experiences.`
+      });
+      
+      // 7. Recalculate profile completion
+      await fetchProfileCompletion();
+      
+    } catch (error: any) {
+      console.error("Resume parsing error:", error);
+      
+      if (error.message?.includes('429')) {
+        toast({
+          title: "Rate limit exceeded",
+          description: "Please wait a moment before trying again.",
+          variant: "destructive"
+        });
+      } else if (error.message?.includes('402')) {
+        toast({
+          title: "Service unavailable",
+          description: "Resume parsing is temporarily unavailable.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Parsing failed",
+          description: "Could not extract data from resume. Please fill manually.",
+          variant: "destructive"
+        });
+      }
+    } finally {
+      setIsParsingResume(false);
+      setResumeFile(null);
+    }
+  };
+
+  const handleDeleteResume = async () => {
+    if (!user || !formData.resume_url) return;
+    
+    try {
+      // Extract file path from URL
+      const urlParts = formData.resume_url.split('/resumes/');
+      if (urlParts.length > 1) {
+        const filePath = urlParts[1];
+        await supabase.storage.from('resumes').remove([filePath]);
+      }
+      
+      await updateProfile({ resume_url: null, resume_uploaded_at: null });
+      setFormData(prev => ({ ...prev, resume_url: '' }));
+      
+      toast({
+        title: "Success",
+        description: "Resume deleted successfully",
+      });
+    } catch (error) {
+      console.error("Error deleting resume:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete resume",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleCancel = () => {
     setFormData({
       first_name: profile?.first_name || '',
@@ -317,8 +471,10 @@ const WorkerProfile = () => {
       profile_photo_url: profile?.profile_photo_url || '',
       experience_level: profile?.experience_level || '',
       worker_category: profile?.worker_category || '',
+      resume_url: profile?.resume_url || '',
     });
     setIsEditing(false);
+    setResumeFile(null);
   };
 
   const canAccessJobs = profileCompletion >= 75;
@@ -376,6 +532,95 @@ const WorkerProfile = () => {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 Complete your profile photo, location, skills, experience, and worker category to unlock job access.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Resume Upload */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Resume Upload (Optional)</CardTitle>
+          <CardDescription>
+            Upload your resume to automatically fill in skills, address, and work history
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {formData.resume_url ? (
+            <div className="space-y-4">
+              <Alert>
+                <FileText className="h-4 w-4" />
+                <AlertDescription>
+                  Resume uploaded {profile?.resume_uploaded_at ? `on ${new Date(profile.resume_uploaded_at).toLocaleDateString()}` : ''}
+                </AlertDescription>
+              </Alert>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => window.open(formData.resume_url, '_blank')}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  View Resume
+                </Button>
+                {isEditing && (
+                  <>
+                    <Button variant="outline" onClick={() => setResumeFile(null)}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Replace Resume
+                    </Button>
+                    <Button variant="destructive" onClick={handleDeleteResume}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete Resume
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : isEditing ? (
+            <div className="space-y-4">
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={handleResumeFileChange}
+                disabled={isParsingResume}
+              />
+              <p className="text-sm text-muted-foreground">
+                Accepted formats: PDF, DOC, DOCX (Max 5MB)
+              </p>
+              {resumeFile && (
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={handleResumeUpload} 
+                    disabled={isParsingResume}
+                  >
+                    {isParsingResume ? (
+                      <>
+                        <Upload className="mr-2 h-4 w-4 animate-spin" />
+                        Parsing Resume...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload & Parse Resume
+                      </>
+                    )}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setResumeFile(null)}
+                    disabled={isParsingResume}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                No resume uploaded. Upload a resume to automatically fill your profile!
               </AlertDescription>
             </Alert>
           )}

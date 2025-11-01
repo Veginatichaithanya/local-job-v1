@@ -15,12 +15,16 @@ interface Job {
   location: string;
   pincode?: string;
   notification_scope: "local" | "all";
+  requires_resume?: boolean;
+  required_skills?: string[];
 }
 
 interface Worker {
   user_id: string;
   latitude: number;
   longitude: number;
+  skills?: string[];
+  resume_url?: string;
   notification_preferences: {
     job_alerts: boolean;
     location_radius_km: number;
@@ -112,7 +116,7 @@ serve(async (req) => {
     // Build worker query based on notification scope
     let workersQuery = supabase
       .from('profiles')
-      .select('user_id, latitude, longitude, pincode, skills, notification_preferences, profile_completion_percentage')
+      .select('user_id, latitude, longitude, pincode, skills, resume_url, notification_preferences, profile_completion_percentage')
       .eq('role', 'worker')
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);
@@ -143,6 +147,12 @@ serve(async (req) => {
     // Find workers within radius and create notifications
     const notifications = [];
     for (const worker of workers || []) {
+      // Skip workers without resume if job requires it
+      if (job.requires_resume && !worker.resume_url) {
+        console.log(`Worker ${worker.user_id} skipped: resume required but not uploaded`);
+        continue;
+      }
+
       const distance = calculateDistance(
         job.latitude,
         job.longitude,
