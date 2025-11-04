@@ -8,12 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { MapPin, Phone, Mail, User, Briefcase, Plus, X, Upload, Camera, AlertCircle, Trash2, FileText } from "lucide-react";
+import { MapPin, Phone, Mail, User, Briefcase, Plus, X, Upload, Camera, AlertCircle, Trash2, FileText, Loader2, Sparkles, Eye, CheckCircle2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { LocationPicker } from "@/components/maps/LocationPicker";
 import { supabase } from "@/integrations/supabase/client";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const WORKER_CATEGORIES = [
   { value: 'general_laborer', label: 'General Laborer' },
@@ -43,6 +44,7 @@ const WorkerProfile = () => {
   const [isAddingWork, setIsAddingWork] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [isParsingResume, setIsParsingResume] = useState(false);
+  const [parsedDataPreview, setParsedDataPreview] = useState<any>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -340,6 +342,7 @@ const WorkerProfile = () => {
     if (!resumeFile || !user) return;
     
     setIsParsingResume(true);
+    setParsedDataPreview(null);
     
     try {
       // 1. Upload to storage
@@ -352,23 +355,36 @@ const WorkerProfile = () => {
       
       if (uploadError) throw uploadError;
       
-      // 2. Get URL
-      const { data: { publicUrl } } = supabase.storage
+      // 2. Create signed URL (valid for 1 hour)
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
         .from('resumes')
-        .getPublicUrl(fileName);
+        .createSignedUrl(fileName, 3600);
       
-      // 3. Call parse-resume edge function
+      if (signedUrlError) throw signedUrlError;
+      
+      // 3. Call parse-resume edge function with signed URL
       const { data: parsedData, error: parseError } = await supabase.functions.invoke('parse-resume', {
-        body: { resumeUrl: publicUrl }
+        body: { resumeUrl: signedUrlData.signedUrl }
       });
       
       if (parseError) throw parseError;
       
-      // 4. Merge parsed data with existing form data
+      // 4. Show preview and auto-fill data
+      setParsedDataPreview(parsedData);
+      
+      // Merge parsed data with existing form data
       const uniqueSkills = [...new Set([...formData.skills, ...(parsedData.skills || [])])];
+      
+      // Get public URL for storage
+      const { data: { publicUrl } } = supabase.storage
+        .from('resumes')
+        .getPublicUrl(fileName);
       
       setFormData(prev => ({
         ...prev,
+        first_name: parsedData.personal_info?.first_name || prev.first_name,
+        last_name: parsedData.personal_info?.last_name || prev.last_name,
+        phone: parsedData.personal_info?.phone || prev.phone,
         skills: uniqueSkills,
         location: parsedData.location?.address || prev.location,
         pincode: parsedData.location?.pincode || prev.pincode,
@@ -394,7 +410,7 @@ const WorkerProfile = () => {
       await updateProfile({ resume_url: publicUrl, resume_uploaded_at: new Date().toISOString() });
       
       toast({
-        title: "Resume parsed successfully!",
+        title: "Resume parsed successfully! 🎉",
         description: `Extracted ${parsedData.skills?.length || 0} skills and ${parsedData.previous_works?.length || 0} work experiences.`
       });
       
@@ -538,143 +554,216 @@ const WorkerProfile = () => {
         </CardContent>
       </Card>
 
-      {/* Resume Upload */}
-      <Card>
+      {/* Resume Upload - Modern UI */}
+      <Card className="border-2 border-dashed border-primary/20 hover:border-primary/40 transition-colors">
         <CardHeader>
-          <CardTitle>Resume Upload (Optional)</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            Resume Upload (AI-Powered)
+          </CardTitle>
           <CardDescription>
-            Upload your resume to automatically fill in skills, address, and work history
+            Upload your resume and AI will automatically extract your information
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {formData.resume_url ? (
+        <CardContent className="space-y-4">
+          {isParsingResume && (
+            <Alert className="border-primary/50 bg-primary/5">
+              <Loader2 className="h-4 w-4 text-primary animate-spin" />
+              <AlertTitle>AI is analyzing your resume...</AlertTitle>
+              <AlertDescription>
+                This usually takes 5-10 seconds. We're extracting your skills, experience, and contact information.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {parsedDataPreview && (
+            <Alert className="border-green-500/50 bg-green-500/5">
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <AlertTitle>Resume Parsed Successfully! 🎉</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>We've extracted the following information:</p>
+                <ul className="list-disc list-inside text-sm space-y-1">
+                  {parsedDataPreview.personal_info?.first_name && (
+                    <li>Name: {parsedDataPreview.personal_info.first_name} {parsedDataPreview.personal_info.last_name}</li>
+                  )}
+                  {parsedDataPreview.personal_info?.phone && (
+                    <li>Phone: {parsedDataPreview.personal_info.phone}</li>
+                  )}
+                  <li>Skills: {parsedDataPreview.skills?.length || 0} skills added</li>
+                  <li>Experience: {parsedDataPreview.previous_works?.length || 0} positions added</li>
+                  {parsedDataPreview.location?.address && <li>Location: {parsedDataPreview.location.address}</li>}
+                </ul>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Review the information below and make any necessary corrections.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {!formData.resume_url ? (
             <div className="space-y-4">
-              <Alert>
-                <FileText className="h-4 w-4" />
-                <AlertDescription>
-                  Resume uploaded {profile?.resume_uploaded_at ? `on ${new Date(profile.resume_uploaded_at).toLocaleDateString()}` : ''}
-                </AlertDescription>
-              </Alert>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => window.open(formData.resume_url, '_blank')}
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  View Resume
-                </Button>
-                {isEditing && (
-                  <>
-                    <Button variant="outline" onClick={() => setResumeFile(null)}>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Replace Resume
-                    </Button>
-                    <Button variant="destructive" onClick={handleDeleteResume}>
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete Resume
-                    </Button>
-                  </>
-                )}
+              <div className="flex items-center justify-center w-full">
+                <label className="flex flex-col items-center justify-center w-full h-32 rounded-lg cursor-pointer bg-secondary/50 hover:bg-secondary/80 transition-colors">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <Upload className="w-8 h-8 mb-2 text-primary" />
+                    <p className="mb-2 text-sm text-muted-foreground">
+                      <span className="font-semibold">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-muted-foreground">PDF, DOC, DOCX (MAX. 5MB)</p>
+                  </div>
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleResumeFileChange}
+                    disabled={isParsingResume || !isEditing}
+                  />
+                </label>
               </div>
-            </div>
-          ) : isEditing ? (
-            <div className="space-y-4">
-              <Input
-                type="file"
-                accept=".pdf,.doc,.docx"
-                onChange={handleResumeFileChange}
-                disabled={isParsingResume}
-              />
-              <p className="text-sm text-muted-foreground">
-                Accepted formats: PDF, DOC, DOCX (Max 5MB)
-              </p>
+              
               {resumeFile && (
-                <div className="flex gap-2">
+                <div className="flex items-center justify-between p-3 bg-primary/10 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-primary" />
+                    <div>
+                      <p className="text-sm font-medium">{resumeFile.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(resumeFile.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
                   <Button 
-                    onClick={handleResumeUpload} 
+                    onClick={handleResumeUpload}
                     disabled={isParsingResume}
+                    className="ml-4"
                   >
                     {isParsingResume ? (
                       <>
-                        <Upload className="mr-2 h-4 w-4 animate-spin" />
-                        Parsing Resume...
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Parsing...
                       </>
                     ) : (
                       <>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload & Parse Resume
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Parse Resume
                       </>
                     )}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setResumeFile(null)}
-                    disabled={isParsingResume}
-                  >
-                    Cancel
                   </Button>
                 </div>
               )}
             </div>
           ) : (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No resume uploaded. Upload a resume to automatically fill your profile!
-              </AlertDescription>
-            </Alert>
+            <div className="flex items-center justify-between p-4 bg-card rounded-lg border">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-primary/10 rounded-lg">
+                  <FileText className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">Resume Uploaded</p>
+                  <p className="text-sm text-muted-foreground">
+                    {profile?.resume_uploaded_at && new Date(profile.resume_uploaded_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => window.open(formData.resume_url, '_blank')}>
+                  <Eye className="w-4 h-4 mr-2" />
+                  View
+                </Button>
+                {isEditing && (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setFormData(prev => ({ ...prev, resume_url: '' }));
+                      setResumeFile(null);
+                    }}>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Replace
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={handleDeleteResume}>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Profile Photo */}
+      {/* Profile Photo - Modern UI */}
       <Card>
         <CardHeader>
-          <CardTitle>Profile Photo</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Camera className="h-5 w-5 text-primary" />
+            Profile Photo
+          </CardTitle>
           <CardDescription>
-            Upload a clear photo of yourself (Max 50MB)
+            Upload a professional photo to help employers recognize you
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           <div className="flex items-center gap-6">
             <div className="relative">
-              {formData.profile_photo_url ? (
-                <img
-                  src={formData.profile_photo_url}
-                  alt="Profile"
-                  className="w-32 h-32 rounded-full object-cover border-4 border-border"
-                />
-              ) : (
-                <div className="w-32 h-32 rounded-full bg-muted flex items-center justify-center border-4 border-border">
-                  <Camera className="w-12 h-12 text-muted-foreground" />
-                </div>
+              <Avatar className="w-24 h-24 border-4 border-primary/20">
+                <AvatarImage src={formData.profile_photo_url || ''} />
+                <AvatarFallback className="text-2xl bg-primary/10">
+                  {formData.first_name?.[0]}{formData.last_name?.[0]}
+                </AvatarFallback>
+              </Avatar>
+              {isEditing && (
+                <label className="absolute bottom-0 right-0 p-2 bg-primary text-primary-foreground rounded-full cursor-pointer hover:bg-primary/90 transition-colors shadow-lg">
+                  <Camera className="w-4 h-4" />
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    disabled={uploading}
+                  />
+                </label>
               )}
             </div>
             
-            {isEditing && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="photo-upload" className="cursor-pointer">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
-                    <Upload className="w-4 h-4" />
-                    {uploading ? 'Uploading...' : 'Upload Photo'}
-                  </div>
-                </Label>
-                <Input
-                  id="photo-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  disabled={uploading}
-                  className="hidden"
-                />
-                <p className="text-xs text-muted-foreground">
-                  JPG, PNG or WEBP (Max 50MB)
+            <div className="flex-1">
+              <h3 className="font-semibold mb-1">Profile Photo</h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                Upload a professional photo (JPG, PNG, Max 2MB)
+              </p>
+              {uploading && (
+                <div className="flex items-center gap-2 text-sm text-primary">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Uploading...
+                </div>
+              )}
+              {!isEditing && !formData.profile_photo_url && (
+                <p className="text-sm text-muted-foreground">
+                  No photo uploaded. Click "Edit Profile" to add one.
                 </p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {isEditing && (
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={handleCancel}>
+            <X className="mr-2 h-4 w-4" />
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Changes"
+            )}
+          </Button>
+        </div>
+      )}
 
       {/* Personal Information */}
       <Card>

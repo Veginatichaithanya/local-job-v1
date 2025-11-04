@@ -8,6 +8,12 @@ const corsHeaders = {
 };
 
 interface ParsedResumeData {
+  personal_info: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+  };
   skills: string[];
   location: {
     address: string | null;
@@ -52,36 +58,48 @@ serve(async (req) => {
     // Download the resume file
     const resumeResponse = await fetch(resumeUrl);
     if (!resumeResponse.ok) {
-      throw new Error('Failed to download resume file');
+      console.error('Failed to download resume:', resumeResponse.status, resumeResponse.statusText);
+      throw new Error(`Failed to download resume file: ${resumeResponse.status} ${resumeResponse.statusText}`);
     }
 
     const resumeBlob = await resumeResponse.blob();
     const resumeArrayBuffer = await resumeBlob.arrayBuffer();
-    
-    // Convert to base64 for document parsing
-    const base64Resume = btoa(String.fromCharCode(...new Uint8Array(resumeArrayBuffer)));
 
     console.log('Extracting text from resume...');
 
-    // Extract text from PDF/DOCX using a simple approach
-    // For production, you might want to use a dedicated library
+    // Extract text using multiple methods for better compatibility
     let resumeText = '';
     
-    // Try to extract text directly (this works for simple PDFs)
+    // Method 1: Try UTF-8 decoding (works for text-based PDFs)
     const decoder = new TextDecoder('utf-8', { fatal: false });
-    resumeText = decoder.decode(resumeArrayBuffer);
+    const decodedText = decoder.decode(resumeArrayBuffer);
     
-    // Clean up the text
-    resumeText = resumeText
-      .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
+    // Extract text between common PDF text markers
+    const textMatches = decodedText.match(/\(([^)]+)\)/g);
+    if (textMatches && textMatches.length > 20) {
+      resumeText = textMatches
+        .map(match => match.slice(1, -1))
+        .join(' ')
+        .replace(/\\[nr]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    // Method 2: If first method didn't work well, try extracting visible ASCII
     if (resumeText.length < 100) {
-      throw new Error('Could not extract meaningful text from resume. Please ensure the file is a valid PDF or DOCX.');
+      resumeText = decodedText
+        .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
+        .replace(/[^\x20-\x7E\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
     }
 
-    console.log('Extracted text length:', resumeText.length);
+    if (resumeText.length < 100) {
+      console.error('Extracted text too short:', resumeText.length, 'chars');
+      throw new Error('Could not extract meaningful text from resume. Please ensure the file is a valid, text-based PDF (not a scanned image).');
+    }
+
+    console.log('Extracted text length:', resumeText.length, 'chars');
 
     // Call Lovable AI to parse the resume
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -105,9 +123,10 @@ Resume text:
 ${resumeText.substring(0, 10000)}
 
 Please extract:
-1. All skills (technical and soft skills)
-2. Location/address information (including 6-digit pincode if present)
-3. Previous work experience with company name, job title, duration, description, and location`
+1. Personal information: first name, last name, email, phone number
+2. All skills (technical and soft skills)
+3. Location/address information (including 6-digit pincode if present)
+4. Previous work experience with company name, job title, duration, description, and location`
           }
         ],
         tools: [{
@@ -118,6 +137,27 @@ Please extract:
             parameters: {
               type: 'object',
               properties: {
+                personal_info: {
+                  type: 'object',
+                  properties: {
+                    first_name: { 
+                      type: 'string',
+                      description: 'First name of the person'
+                    },
+                    last_name: { 
+                      type: 'string',
+                      description: 'Last name of the person'
+                    },
+                    email: { 
+                      type: 'string',
+                      description: 'Email address'
+                    },
+                    phone: { 
+                      type: 'string',
+                      description: 'Phone number (10 digits for Indian numbers)'
+                    }
+                  }
+                },
                 skills: {
                   type: 'array',
                   items: { type: 'string' },
@@ -154,7 +194,7 @@ Please extract:
                   }
                 }
               },
-              required: ['skills', 'location', 'previous_works']
+              required: ['personal_info', 'skills', 'location', 'previous_works']
             }
           }
         }],
@@ -195,6 +235,7 @@ Please extract:
     const parsedData: ParsedResumeData = JSON.parse(toolCall.function.arguments);
 
     console.log('Successfully parsed resume:', {
+      hasPersonalInfo: !!parsedData.personal_info?.first_name,
       skillsCount: parsedData.skills.length,
       worksCount: parsedData.previous_works.length,
       hasLocation: !!parsedData.location.address
