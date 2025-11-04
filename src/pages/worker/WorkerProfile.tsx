@@ -473,6 +473,24 @@ const WorkerProfile = () => {
     }
   };
 
+  const openResume = async () => {
+    try {
+      if (!formData.resume_url) throw new Error('Missing URL');
+      const parts = formData.resume_url.split('/resumes/');
+      if (parts.length < 2) throw new Error('Invalid resume URL');
+      const filePath = parts[1].split('?')[0];
+      const { data, error } = await supabase.storage.from('resumes').createSignedUrl(filePath, 300);
+      if (error || !data?.signedUrl) throw error || new Error('Could not create signed URL');
+      window.open(data.signedUrl, '_blank');
+    } catch (e) {
+      console.error('Open resume error:', e);
+      toast({
+        title: 'Unable to open resume',
+        description: 'Please try re-uploading your resume.',
+        variant: 'destructive',
+      });
+    }
+  };
   const handleCancel = () => {
     setFormData({
       first_name: profile?.first_name || '',
@@ -666,7 +684,7 @@ const WorkerProfile = () => {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => window.open(formData.resume_url, '_blank')}>
+                <Button variant="outline" size="sm" onClick={openResume}>
                   <Eye className="w-4 h-4 mr-2" />
                   View
                 </Button>
