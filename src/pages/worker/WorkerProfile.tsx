@@ -15,8 +15,10 @@ import { LocationPicker } from "@/components/maps/LocationPicker";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ParsedDataPreview } from "@/components/worker/ParsedDataPreview";
+import { detectWorkerCategory } from "@/utils/workerCategoryDetection";
 
-const WORKER_CATEGORIES = [
+export const WORKER_CATEGORIES = [
   { value: 'general_laborer', label: 'General Laborer' },
   { value: 'construction_worker', label: 'Construction Worker' },
   { value: 'mechanic', label: 'Mechanic' },
@@ -45,6 +47,8 @@ const WorkerProfile = () => {
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [isParsingResume, setIsParsingResume] = useState(false);
   const [parsedDataPreview, setParsedDataPreview] = useState<any>(null);
+  const [showParsedDataPreview, setShowParsedDataPreview] = useState(false);
+  const [previousFormData, setPreviousFormData] = useState<any>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -369,31 +373,60 @@ const WorkerProfile = () => {
       
       if (parseError) throw parseError;
       
-      // 4. Show preview and auto-fill data
-      setParsedDataPreview(parsedData);
+      // Check for errors in response
+      if (parsedData.error) {
+        throw new Error(parsedData.error + (parsedData.suggestion ? '\n\n' + parsedData.suggestion : ''));
+      }
+      
+      console.log('Resume parsed successfully:', parsedData);
+      
+      // Store current form data as backup
+      setPreviousFormData({ ...formData });
+      
+      // Store parsed data and show preview
+      setParsedDataPreview({ ...parsedData, resumeFileName: fileName });
+      setShowParsedDataPreview(true);
+      
+    } catch (error: any) {
+      console.error('Error uploading/parsing resume:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to parse resume. Please try again.",
+        variant: "destructive",
+      });
+      setResumeFile(null);
+    } finally {
+      setIsParsingResume(false);
+    }
+  };
+
+  const handleApplyParsedData = async (editedData: any) => {
+    if (!user || !profile) return;
+
+    try {
+      // Detect worker category from parsed data
+      const detectedCategory = detectWorkerCategory(editedData);
       
       // Merge parsed data with existing form data
-      const uniqueSkills = [...new Set([...formData.skills, ...(parsedData.skills || [])])];
+      const uniqueSkills = [...new Set([...formData.skills, ...(editedData.skills || [])])];
       
-      // Get public URL for storage
-      const { data: { publicUrl } } = supabase.storage
-        .from('resumes')
-        .getPublicUrl(fileName);
-      
-      setFormData(prev => ({
-        ...prev,
-        first_name: parsedData.personal_info?.first_name || prev.first_name,
-        last_name: parsedData.personal_info?.last_name || prev.last_name,
-        phone: parsedData.personal_info?.phone || prev.phone,
+      const updatedFormData = {
+        ...formData,
+        first_name: editedData.personal_info?.first_name || formData.first_name,
+        last_name: editedData.personal_info?.last_name || formData.last_name,
+        phone: editedData.personal_info?.phone || formData.phone,
         skills: uniqueSkills,
-        location: parsedData.location?.address || prev.location,
-        pincode: parsedData.location?.pincode || prev.pincode,
-        resume_url: publicUrl,
-      }));
-      
-      // 5. Add previous works to database
-      if (parsedData.previous_works?.length > 0) {
-        for (const work of parsedData.previous_works) {
+        location: editedData.location?.address || formData.location,
+        pincode: editedData.location?.pincode || formData.pincode,
+        resume_url: editedData.resumeFileName,
+        worker_category: detectedCategory || formData.worker_category
+      };
+
+      setFormData(updatedFormData);
+
+      // Add previous works if any
+      if (editedData.previous_works && editedData.previous_works.length > 0) {
+        for (const work of editedData.previous_works) {
           await supabase.from('worker_previous_works').insert({
             worker_id: user.id,
             company_name: work.company_name,
@@ -406,42 +439,55 @@ const WorkerProfile = () => {
         await fetchPreviousWorks();
       }
       
-      // 6. Update profile with resume URL
-      await updateProfile({ resume_url: publicUrl, resume_uploaded_at: new Date().toISOString() });
+      // Update profile with resume URL
+      await updateProfile({ resume_url: editedData.resumeFileName });
+      
+      setShowParsedDataPreview(false);
+      setParsedDataPreview(null);
+      
+      let message = 'Resume data applied to profile!';
+      if (detectedCategory) {
+        const categoryLabel = WORKER_CATEGORIES.find(c => c.value === detectedCategory)?.label;
+        message += ` Auto-detected category: ${categoryLabel}`;
+      }
       
       toast({
-        title: "Resume parsed successfully! 🎉",
-        description: `Extracted ${parsedData.skills?.length || 0} skills and ${parsedData.previous_works?.length || 0} work experiences.`
+        title: "Success! 🎉",
+        description: message
       });
       
-      // 7. Recalculate profile completion
+      if (editedData.warnings && editedData.warnings.length > 0) {
+        setTimeout(() => {
+          toast({
+            title: "Review Needed",
+            description: "Some data may need manual review. Please check all fields.",
+            variant: "default"
+          });
+        }, 1000);
+      }
+      
+      // Recalculate profile completion
       await fetchProfileCompletion();
       
     } catch (error: any) {
-      console.error("Resume parsing error:", error);
-      
-      if (error.message?.includes('429')) {
-        toast({
-          title: "Rate limit exceeded",
-          description: "Please wait a moment before trying again.",
-          variant: "destructive"
-        });
-      } else if (error.message?.includes('402')) {
-        toast({
-          title: "Service unavailable",
-          description: "Resume parsing is temporarily unavailable.",
-          variant: "destructive"
-        });
-      } else {
-        toast({
-          title: "Parsing failed",
-          description: "Could not extract data from resume. Please fill manually.",
-          variant: "destructive"
-        });
-      }
-    } finally {
-      setIsParsingResume(false);
-      setResumeFile(null);
+      console.error('Error applying parsed data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to apply parsed data",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleCancelParsedData = () => {
+    setShowParsedDataPreview(false);
+    setParsedDataPreview(null);
+    setResumeFile(null);
+    
+    // Optionally restore previous form data
+    if (previousFormData) {
+      setFormData(previousFormData);
+      setPreviousFormData(null);
     }
   };
 
@@ -514,8 +560,17 @@ const WorkerProfile = () => {
   const canAccessJobs = profileCompletion >= 75;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <>
+      {showParsedDataPreview && parsedDataPreview && (
+        <ParsedDataPreview
+          parsedData={parsedDataPreview}
+          onApply={handleApplyParsedData}
+          onCancel={handleCancelParsedData}
+        />
+      )}
+      
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">My Profile</h1>
           <p className="text-muted-foreground">
@@ -1207,7 +1262,8 @@ const WorkerProfile = () => {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 };
 

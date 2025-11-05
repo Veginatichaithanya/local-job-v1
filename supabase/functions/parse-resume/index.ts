@@ -26,6 +26,107 @@ interface ParsedResumeData {
     description: string | null;
     location: string | null;
   }>;
+  confidence: 'high' | 'medium' | 'low';
+  extraction_metadata?: {
+    text_length: number;
+    text_quality: string;
+    resume_keywords_found: boolean;
+  };
+}
+
+// Validate extracted text quality before AI processing
+function validateTextQuality(text: string): { valid: boolean; reason?: string; quality: string } {
+  if (text.length < 200) {
+    return { valid: false, reason: 'Text too short - file may be scanned image or corrupted', quality: 'poor' };
+  }
+  
+  // Check for common resume indicators
+  const resumeKeywords = ['experience', 'education', 'skills', 'work', 'email', 'phone', 'profile', 'summary'];
+  const lowerText = text.toLowerCase();
+  const foundKeywords = resumeKeywords.filter(keyword => lowerText.includes(keyword));
+  
+  if (foundKeywords.length < 2) {
+    return { 
+      valid: false, 
+      reason: 'No resume keywords found - this may not be a valid resume file',
+      quality: 'poor'
+    };
+  }
+  
+  // Check if it's mostly readable ASCII characters
+  const readableChars = (text.match(/[a-zA-Z0-9\s@.,\-]/g) || []).length;
+  const asciiRatio = readableChars / text.length;
+  
+  if (asciiRatio < 0.5) {
+    return { 
+      valid: false, 
+      reason: 'Garbled text detected - PDF may be encrypted or corrupted',
+      quality: 'poor'
+    };
+  }
+  
+  // Determine quality level
+  let quality = 'good';
+  if (text.length < 500 || foundKeywords.length < 3) {
+    quality = 'fair';
+  }
+  if (text.length > 2000 && foundKeywords.length >= 4 && asciiRatio > 0.8) {
+    quality = 'excellent';
+  }
+  
+  return { valid: true, quality };
+}
+
+// Validate parsed data from AI
+function validateParsedData(data: ParsedResumeData): { valid: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+  
+  // Check personal info
+  if (!data.personal_info?.first_name && !data.personal_info?.last_name) {
+    warnings.push('No name found in resume');
+  }
+  
+  // Validate phone number format (Indian: 10 digits)
+  if (data.personal_info?.phone) {
+    const cleanPhone = data.personal_info.phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10 || !cleanPhone.startsWith('6') && !cleanPhone.startsWith('7') && !cleanPhone.startsWith('8') && !cleanPhone.startsWith('9')) {
+      warnings.push(`Invalid phone format: ${data.personal_info.phone}`);
+      data.personal_info.phone = null;
+    } else {
+      data.personal_info.phone = cleanPhone;
+    }
+  }
+  
+  // Validate email
+  if (data.personal_info?.email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.personal_info.email)) {
+      warnings.push(`Invalid email format: ${data.personal_info.email}`);
+      data.personal_info.email = null;
+    }
+  }
+  
+  // Validate pincode (6 digits)
+  if (data.location?.pincode) {
+    const cleanPincode = data.location.pincode.replace(/\D/g, '');
+    if (cleanPincode.length !== 6) {
+      warnings.push(`Invalid pincode format: ${data.location.pincode}`);
+      data.location.pincode = null;
+    } else {
+      data.location.pincode = cleanPincode;
+    }
+  }
+  
+  // Check if we have enough data
+  const hasMinimumData = 
+    (data.personal_info?.first_name || data.personal_info?.last_name) &&
+    (data.skills?.length > 0 || data.previous_works?.length > 0);
+  
+  if (!hasMinimumData) {
+    warnings.push('Insufficient data extracted - resume may be in unsupported format');
+  }
+  
+  return { valid: hasMinimumData, warnings };
 }
 
 serve(async (req) => {
@@ -94,12 +195,23 @@ serve(async (req) => {
         .trim();
     }
 
-    if (resumeText.length < 100) {
-      console.error('Extracted text too short:', resumeText.length, 'chars');
-      throw new Error('Could not extract meaningful text from resume. Please ensure the file is a valid, text-based PDF (not a scanned image).');
+    console.log('Extracted text length:', resumeText.length, 'chars');
+    console.log('First 500 chars of extracted text:', resumeText.substring(0, 500));
+
+    // Validate text quality before sending to AI
+    const textQuality = validateTextQuality(resumeText);
+    if (!textQuality.valid) {
+      console.error('Text quality check failed:', textQuality.reason);
+      return new Response(
+        JSON.stringify({ 
+          error: textQuality.reason || 'Could not extract readable text from resume',
+          suggestion: 'Please ensure your resume is a text-based PDF (not a scanned image). If needed, try converting to DOCX or plain text format.'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log('Extracted text length:', resumeText.length, 'chars');
+    console.log('Text quality assessment:', textQuality.quality);
 
     // Call Lovable AI to parse the resume
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -113,20 +225,29 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are a resume parser. Extract information from the resume text and structure it properly.`
+            content: `You are a strict resume parser. Extract ONLY information that is explicitly present in the resume.
+
+CRITICAL RULES:
+- If information is NOT found in the resume, return null - DO NOT make up or infer data
+- DO NOT hallucinate names, emails, or phone numbers
+- Only extract data that is clearly visible in the text
+- If uncertain about any field, set it to null
+- Be conservative - accuracy is more important than completeness`
           },
           {
             role: 'user',
-            content: `Extract the following information from this resume:
+            content: `Extract the following information from this resume text:
 
 Resume text:
 ${resumeText.substring(0, 10000)}
 
-Please extract:
-1. Personal information: first name, last name, email, phone number
-2. All skills (technical and soft skills)
-3. Location/address information (including 6-digit pincode if present)
-4. Previous work experience with company name, job title, duration, description, and location`
+Extract ONLY if clearly present:
+1. Personal information: first name, last name, email, phone number (Indian format: 10 digits)
+2. Skills (technical and soft skills) - list all mentioned
+3. Location/address with 6-digit pincode
+4. Previous work experience: company, job title, duration, description, location
+
+IMPORTANT: If you cannot find a piece of information, return null for that field. Do not make assumptions.`
           }
         ],
         tools: [{
@@ -234,15 +355,62 @@ Please extract:
 
     const parsedData: ParsedResumeData = JSON.parse(toolCall.function.arguments);
 
+    // Add extraction metadata
+    parsedData.extraction_metadata = {
+      text_length: resumeText.length,
+      text_quality: textQuality.quality,
+      resume_keywords_found: true
+    };
+
+    console.log('Raw parsed data:', JSON.stringify(parsedData, null, 2));
+
+    // Validate parsed data
+    const validation = validateParsedData(parsedData);
+    
+    if (validation.warnings.length > 0) {
+      console.warn('Validation warnings:', validation.warnings);
+    }
+
+    // Determine confidence level
+    let confidence: 'high' | 'medium' | 'low' = 'high';
+    
+    if (!parsedData.personal_info?.first_name || !parsedData.personal_info?.last_name) {
+      confidence = 'low';
+      console.warn('Low confidence: Missing name information');
+    } else if (parsedData.skills.length === 0 && parsedData.previous_works.length === 0) {
+      confidence = 'low';
+      console.warn('Low confidence: No skills or experience found');
+    } else if (validation.warnings.length > 2 || textQuality.quality === 'fair') {
+      confidence = 'medium';
+    }
+
+    parsedData.confidence = confidence;
+
+    if (!validation.valid) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Could not extract sufficient information from resume',
+          warnings: validation.warnings,
+          partialData: parsedData
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('Successfully parsed resume:', {
       hasPersonalInfo: !!parsedData.personal_info?.first_name,
       skillsCount: parsedData.skills.length,
       worksCount: parsedData.previous_works.length,
-      hasLocation: !!parsedData.location.address
+      hasLocation: !!parsedData.location.address,
+      confidence: parsedData.confidence,
+      warnings: validation.warnings
     });
 
     return new Response(
-      JSON.stringify(parsedData),
+      JSON.stringify({
+        ...parsedData,
+        warnings: validation.warnings.length > 0 ? validation.warnings : undefined
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
