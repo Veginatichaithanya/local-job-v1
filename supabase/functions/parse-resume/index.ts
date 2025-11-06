@@ -135,11 +135,11 @@ serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!LOVABLE_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!GEMINI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Missing required environment variables');
     }
 
@@ -231,30 +231,25 @@ serve(async (req) => {
 
     console.log('Text quality assessment:', textQuality.quality);
 
-    // Call Lovable AI to parse the resume
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call Google Gemini AI to parse the resume
+    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a strict resume parser. Extract ONLY information that is explicitly present in the resume.
+        contents: [{
+          parts: [{
+            text: `You are a strict resume parser. Extract ONLY information that is explicitly present in the resume.
 
 CRITICAL RULES:
 - If information is NOT found in the resume, return null - DO NOT make up or infer data
 - DO NOT hallucinate names, emails, or phone numbers
 - Only extract data that is clearly visible in the text
 - If uncertain about any field, set it to null
-- Be conservative - accuracy is more important than completeness`
-          },
-          {
-            role: 'user',
-            content: `Extract the following information from this resume text:
+- Be conservative - accuracy is more important than completeness
+
+Extract the following information from this resume text:
 
 Resume text:
 ${resumeText.substring(0, 10000)}
@@ -265,97 +260,49 @@ Extract ONLY if clearly present:
 3. Location/address with 6-digit pincode
 4. Previous work experience: company, job title, duration, description, location
 
-IMPORTANT: If you cannot find a piece of information, return null for that field. Do not make assumptions.`
-          }
-        ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'extract_resume_data',
-            description: 'Extract structured data from resume',
-            parameters: {
-              type: 'object',
-              properties: {
-                personal_info: {
-                  type: 'object',
-                  properties: {
-                    first_name: { 
-                      type: 'string',
-                      description: 'First name of the person'
-                    },
-                    last_name: { 
-                      type: 'string',
-                      description: 'Last name of the person'
-                    },
-                    email: { 
-                      type: 'string',
-                      description: 'Email address'
-                    },
-                    phone: { 
-                      type: 'string',
-                      description: 'Phone number (10 digits for Indian numbers)'
-                    }
-                  }
-                },
-                skills: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'List of all skills found in the resume'
-                },
-                location: {
-                  type: 'object',
-                  properties: {
-                    address: { 
-                      type: 'string',
-                      description: 'Full address or location mentioned in resume'
-                    },
-                    pincode: { 
-                      type: 'string',
-                      description: '6-digit Indian pincode if found, otherwise null'
-                    }
-                  }
-                },
-                previous_works: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      company_name: { type: 'string' },
-                      job_title: { type: 'string' },
-                      duration: { 
-                        type: 'string',
-                        description: 'e.g., "Jan 2020 - Dec 2022" or "2 years"'
-                      },
-                      description: { type: 'string' },
-                      location: { type: 'string' }
-                    },
-                    required: ['company_name', 'job_title']
-                  }
-                }
-              },
-              required: ['personal_info', 'skills', 'location', 'previous_works']
-            }
-          }
+IMPORTANT: If you cannot find a piece of information, return null for that field. Do not make assumptions.
+
+Return a JSON object with this structure:
+{
+  "personal_info": {
+    "first_name": string | null,
+    "last_name": string | null,
+    "email": string | null,
+    "phone": string | null
+  },
+  "skills": string[],
+  "location": {
+    "address": string | null,
+    "pincode": string | null
+  },
+  "previous_works": [{
+    "company_name": string,
+    "job_title": string,
+    "duration": string,
+    "description": string | null,
+    "location": string | null
+  }]
+}`
+          }]
         }],
-        tool_choice: { type: 'function', function: { name: 'extract_resume_data' } }
+        generationConfig: {
+          temperature: 0.1,
+          topK: 1,
+          topP: 1,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json"
+        }
       })
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error('AI Gateway error:', aiResponse.status, errorText);
+      console.error('Gemini API error:', aiResponse.status, errorText);
       
       if (aiResponse.status === 429) {
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded. Please try again in a moment.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'AI service temporarily unavailable. Please try again later.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
@@ -365,13 +312,13 @@ IMPORTANT: If you cannot find a piece of information, return null for that field
     const aiData = await aiResponse.json();
     console.log('AI response:', JSON.stringify(aiData, null, 2));
 
-    // Extract the parsed data from AI response
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) {
-      throw new Error('No structured data returned from AI');
+    // Extract the parsed data from Gemini response
+    const textContent = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!textContent) {
+      throw new Error('No response from AI');
     }
 
-    const parsedData: ParsedResumeData = JSON.parse(toolCall.function.arguments);
+    const parsedData: ParsedResumeData = JSON.parse(textContent);
 
     // Add extraction metadata
     parsedData.extraction_metadata = {
