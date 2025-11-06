@@ -165,34 +165,68 @@ serve(async (req) => {
 
     const resumeBlob = await resumeResponse.blob();
     const resumeArrayBuffer = await resumeBlob.arrayBuffer();
+    const uint8Array = new Uint8Array(resumeArrayBuffer);
 
     console.log('Extracting text from resume...');
 
-    // Extract text using multiple methods for better compatibility
+    // Import PDF.js for proper PDF parsing
+    const pdfjsLib = await import('https://esm.sh/pdfjs-dist@3.11.174/build/pdf.mjs');
+    
     let resumeText = '';
     
-    // Method 1: Try UTF-8 decoding (works for text-based PDFs)
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    const decodedText = decoder.decode(resumeArrayBuffer);
-    
-    // Extract text between common PDF text markers
-    const textMatches = decodedText.match(/\(([^)]+)\)/g);
-    if (textMatches && textMatches.length > 20) {
-      resumeText = textMatches
-        .map(match => match.slice(1, -1))
-        .join(' ')
-        .replace(/\\[nr]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-    
-    // Method 2: If first method didn't work well, try extracting visible ASCII
-    if (resumeText.length < 100) {
-      resumeText = decodedText
-        .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
-        .replace(/[^\x20-\x7E\s]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+    try {
+      // Use PDF.js to properly extract text from PDF
+      const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+      const pdf = await loadingTask.promise;
+      
+      console.log(`PDF loaded successfully. Pages: ${pdf.numPages}`);
+      
+      // Extract text from all pages (limit to first 10 pages for performance)
+      const maxPages = Math.min(pdf.numPages, 10);
+      const textPromises = [];
+      
+      for (let i = 1; i <= maxPages; i++) {
+        textPromises.push(
+          pdf.getPage(i).then(async (page) => {
+            const textContent = await page.getTextContent();
+            return textContent.items
+              .map((item: any) => item.str)
+              .join(' ');
+          })
+        );
+      }
+      
+      const pageTexts = await Promise.all(textPromises);
+      resumeText = pageTexts.join('\n').replace(/\s+/g, ' ').trim();
+      
+      console.log('PDF text extraction successful');
+      
+    } catch (pdfError) {
+      console.error('PDF.js extraction failed, trying fallback method:', pdfError);
+      
+      // Fallback: Try basic text extraction for text-based PDFs
+      const decoder = new TextDecoder('utf-8', { fatal: false });
+      const decodedText = decoder.decode(resumeArrayBuffer);
+      
+      // Extract text between common PDF text markers
+      const textMatches = decodedText.match(/\(([^)]+)\)/g);
+      if (textMatches && textMatches.length > 20) {
+        resumeText = textMatches
+          .map(match => match.slice(1, -1))
+          .join(' ')
+          .replace(/\\[nr]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+      
+      // If still no text, try extracting visible ASCII
+      if (resumeText.length < 100) {
+        resumeText = decodedText
+          .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
+          .replace(/[^\x20-\x7E\s]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
     }
 
     console.log('Extracted text length:', resumeText.length, 'chars');
