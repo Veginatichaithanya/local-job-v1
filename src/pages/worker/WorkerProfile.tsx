@@ -424,6 +424,22 @@ const WorkerProfile = () => {
 
       setFormData(updatedFormData);
 
+      // Save all personal information and location to database
+      const { error: profileError } = await updateProfile({
+        first_name: updatedFormData.first_name,
+        last_name: updatedFormData.last_name,
+        phone: updatedFormData.phone,
+        skills: updatedFormData.skills,
+        location: updatedFormData.location,
+        pincode: updatedFormData.pincode,
+        worker_category: updatedFormData.worker_category,
+        resume_url: editedData.resumeFileName,
+      });
+
+      if (profileError) {
+        throw new Error('Failed to update profile');
+      }
+
       // Add previous works if any
       if (editedData.previous_works && editedData.previous_works.length > 0) {
         for (const work of editedData.previous_works) {
@@ -438,9 +454,6 @@ const WorkerProfile = () => {
         }
         await fetchPreviousWorks();
       }
-      
-      // Update profile with resume URL
-      await updateProfile({ resume_url: editedData.resumeFileName });
       
       setShowParsedDataPreview(false);
       setParsedDataPreview(null);

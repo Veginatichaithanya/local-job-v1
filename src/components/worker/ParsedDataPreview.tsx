@@ -124,34 +124,33 @@ export const ParsedDataPreview = ({ parsedData, onApply, onCancel }: ParsedDataP
             </div>
           </div>
 
-          {/* Location */}
-          {(editedData.location?.address || editedData.location?.pincode) && (
-            <div className="space-y-4">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Info className="h-4 w-4" />
-                Location
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Address</Label>
-                  <Textarea
-                    value={editedData.location?.address || ''}
-                    onChange={(e) => updateLocation('address', e.target.value)}
-                    placeholder="Not found"
-                    rows={2}
-                  />
-                </div>
-                <div>
-                  <Label>Pincode</Label>
-                  <Input
-                    value={editedData.location?.pincode || ''}
-                    onChange={(e) => updateLocation('pincode', e.target.value)}
-                    placeholder="Not found"
-                  />
-                </div>
+          {/* Location - Always show so users can manually enter */}
+          <div className="space-y-4">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Info className="h-4 w-4" />
+              Location
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Address</Label>
+                <Textarea
+                  value={editedData.location?.address || ''}
+                  onChange={(e) => updateLocation('address', e.target.value)}
+                  placeholder="Enter your full address"
+                  rows={2}
+                />
+              </div>
+              <div>
+                <Label>Pincode (6 digits)</Label>
+                <Input
+                  value={editedData.location?.pincode || ''}
+                  onChange={(e) => updateLocation('pincode', e.target.value)}
+                  placeholder="Enter 6-digit pincode"
+                  maxLength={6}
+                />
               </div>
             </div>
-          )}
+          </div>
 
           {/* Skills */}
           {editedData.skills && editedData.skills.length > 0 && (
