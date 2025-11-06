@@ -4,17 +4,14 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { WorkerSidebar } from "@/components/worker/WorkerSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 const WorkerLayout = () => {
   const { user, profile, loading } = useAuth();
   const isMobile = useIsMobile();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   // Redirect if not authenticated or not a worker

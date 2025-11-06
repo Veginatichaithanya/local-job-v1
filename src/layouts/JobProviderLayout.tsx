@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { JobProviderSidebar } from "@/components/job-provider/JobProviderSidebar";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 export default function JobProviderLayout() {
   const { user, profile, loading } = useAuth();
@@ -20,11 +21,7 @@ export default function JobProviderLayout() {
   }, [user, profile, loading, navigate]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!user || profile?.role !== "job_provider") {
