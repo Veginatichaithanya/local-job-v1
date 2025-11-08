@@ -13,6 +13,7 @@ import { X, FileText } from "lucide-react";
 import { LocationPicker } from "@/components/maps/LocationPicker";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 interface JobFormData {
   title: string;
@@ -125,6 +126,10 @@ export default function PostJob() {
       setLoading(false);
     }
   };
+
+  if (loading) {
+    return <LoadingScreen fullScreen={false} />;
+  }
 
   return (
     <div className="space-y-6">

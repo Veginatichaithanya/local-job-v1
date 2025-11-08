@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { LocationPicker } from "@/components/maps/LocationPicker";
 import { Progress } from "@/components/ui/progress";
 import { Building2, MapPin, Phone, Mail } from "lucide-react";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 export default function JobProviderProfile() {
   const { profile, updateProfile } = useAuth();
@@ -53,7 +54,14 @@ export default function JobProviderProfile() {
   const handleSave = async () => {
     setLoading(true);
     try {
-      const { error } = await updateProfile(formData);
+      // Show loading for minimum time
+      const minLoadingTime = new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const updatePromise = updateProfile(formData);
+      
+      await Promise.all([minLoadingTime, updatePromise]);
+      
+      const { error } = await updatePromise;
       if (error) throw error;
 
       setIsEditing(false);
@@ -102,6 +110,10 @@ export default function JobProviderProfile() {
       location: locationData.address || formData.location,
     });
   };
+
+  if (loading) {
+    return <LoadingScreen fullScreen={false} />;
+  }
 
   return (
     <div className="space-y-6">

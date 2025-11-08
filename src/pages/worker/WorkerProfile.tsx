@@ -17,6 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ParsedDataPreview } from "@/components/worker/ParsedDataPreview";
 import { detectWorkerCategory } from "@/utils/workerCategoryDetection";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 export const WORKER_CATEGORIES = [
   { value: 'general_laborer', label: 'General Laborer' },
@@ -239,7 +240,14 @@ const WorkerProfile = () => {
 
     setIsLoading(true);
     
-    const { error } = await updateProfile(formData);
+    // Show loading for minimum time
+    const minLoadingTime = new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const updatePromise = updateProfile(formData);
+    
+    await Promise.all([minLoadingTime, updatePromise]);
+    
+    const { error } = await updatePromise;
     
     if (error) {
       toast({
@@ -571,6 +579,10 @@ const WorkerProfile = () => {
   };
 
   const canAccessJobs = profileCompletion >= 75;
+
+  if (isLoading) {
+    return <LoadingScreen fullScreen={false} />;
+  }
 
   return (
     <>

@@ -38,10 +38,10 @@ const App = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate initial app load
+    // Initial app load with minimum 10 seconds
     const timer = setTimeout(() => {
       setIsInitialLoading(false);
-    }, 1500);
+    }, 10000);
 
     return () => clearTimeout(timer);
   }, []);
