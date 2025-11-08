@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Shield } from "lucide-react";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 const ADMIN_CODE = "992200";
 
@@ -19,7 +20,19 @@ export default function AdminLogin() {
     e.preventDefault();
     setIsLoading(true);
 
-    if (code === ADMIN_CODE) {
+    // Show loading for minimum time
+    const minLoadingTime = new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const checkPromise = new Promise<boolean>((resolve) => {
+      setTimeout(() => {
+        resolve(code === ADMIN_CODE);
+      }, 100);
+    });
+
+    await Promise.all([minLoadingTime, checkPromise]);
+    const isValid = await checkPromise;
+
+    if (isValid) {
       // Store admin session in localStorage
       localStorage.setItem("admin_authenticated", "true");
       toast({
@@ -37,6 +50,10 @@ export default function AdminLogin() {
     
     setIsLoading(false);
   };
+
+  if (isLoading) {
+    return <LoadingScreen fullScreen={false} />;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">

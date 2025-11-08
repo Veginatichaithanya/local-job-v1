@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, Building2, ArrowLeft } from 'lucide-react';
+import { LoadingScreen } from '@/components/LoadingScreen';
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -52,12 +53,13 @@ const Auth = () => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Pass the expected role for validation
-    const { error } = await signIn(signInEmail, signInPassword, currentRole || undefined);
+    // Show loading for minimum time
+    const minLoadingTime = new Promise(resolve => setTimeout(resolve, 2000));
     
-    if (!error) {
-      // Let the useEffect handle redirection
-    }
+    // Pass the expected role for validation
+    const signInPromise = signIn(signInEmail, signInPassword, currentRole || undefined);
+    
+    await Promise.all([minLoadingTime, signInPromise]);
     
     setIsLoading(false);
   };
@@ -79,10 +81,19 @@ const Auth = () => {
       }
     }
     
-    const { error } = await signUp(signUpEmail, signUpPassword, signUpData);
+    // Show loading for minimum time
+    const minLoadingTime = new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const signUpPromise = signUp(signUpEmail, signUpPassword, signUpData);
+    
+    await Promise.all([minLoadingTime, signUpPromise]);
     
     setIsLoading(false);
   };
+
+  if (isLoading) {
+    return <LoadingScreen fullScreen={false} />;
+  }
 
   const getRoleDisplay = () => {
     if (currentRole === 'worker') return { title: 'Worker', icon: Users };

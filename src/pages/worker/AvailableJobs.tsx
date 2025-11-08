@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { JobsMap } from "@/components/maps/JobsMap";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 interface Job {
   id: string;
@@ -34,6 +35,7 @@ const AvailableJobs = () => {
   const [filterByDistance, setFilterByDistance] = useState("all");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isApplying, setIsApplying] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -139,33 +141,36 @@ const AvailableJobs = () => {
   const handleApply = async (jobId: string) => {
     if (!profile) return;
 
+    setIsApplying(true);
     try {
-      // Check if already applied
-      const { data: existingApplication } = await supabase
-        .from('job_applications')
-        .select('id')
-        .eq('job_id', jobId)
-        .eq('worker_id', profile.user_id)
-        .maybeSingle();
+      // Show loading for minimum time
+      const minLoadingTime = new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const applyPromise = (async () => {
+        // Check if already applied
+        const { data: existingApplication } = await supabase
+          .from('job_applications')
+          .select('id')
+          .eq('job_id', jobId)
+          .eq('worker_id', profile.user_id)
+          .maybeSingle();
 
-      if (existingApplication) {
-        toast({
-          title: "Already Applied",
-          description: "You have already applied to this job.",
-          variant: "destructive",
-        });
-        return;
-      }
+        if (existingApplication) {
+          throw new Error("ALREADY_APPLIED");
+        }
 
-      const { error } = await supabase
-        .from('job_applications')
-        .insert({
-          job_id: jobId,
-          worker_id: profile.user_id,
-          status: 'pending',
-        });
+        const { error } = await supabase
+          .from('job_applications')
+          .insert({
+            job_id: jobId,
+            worker_id: profile.user_id,
+            status: 'pending',
+          });
 
-      if (error) throw error;
+        if (error) throw error;
+      })();
+
+      await Promise.all([minLoadingTime, applyPromise]);
 
       toast({
         title: "Application Submitted",
@@ -174,13 +179,23 @@ const AvailableJobs = () => {
 
       // Optionally navigate to applied jobs
       navigate('/worker/applied-jobs');
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message === "ALREADY_APPLIED") {
+        toast({
+          title: "Already Applied",
+          description: "You have already applied to this job.",
+          variant: "destructive",
+        });
+        return;
+      }
       console.error('Error applying to job:', error);
       toast({
         title: "Error",
         description: "Failed to submit application. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsApplying(false);
     }
   };
 
@@ -221,12 +236,8 @@ const AvailableJobs = () => {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-      </div>
-    );
+  if (loading || isApplying) {
+    return <LoadingScreen fullScreen={false} />;
   }
 
   return (
