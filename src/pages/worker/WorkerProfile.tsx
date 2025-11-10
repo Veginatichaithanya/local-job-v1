@@ -18,6 +18,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ParsedDataPreview } from "@/components/worker/ParsedDataPreview";
 import { detectWorkerCategory } from "@/utils/workerCategoryDetection";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { Combobox } from "@/components/ui/combobox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const WORKER_CATEGORIES = [
   { value: 'general_laborer', label: 'General Laborer' },
@@ -52,6 +54,7 @@ const WorkerProfile = () => {
   const [previousFormData, setPreviousFormData] = useState<any>(null);
 
   // Form state
+  const [locationInputMode, setLocationInputMode] = useState<'map' | 'manual'>('map');
   const [formData, setFormData] = useState({
     first_name: profile?.first_name || '',
     last_name: profile?.last_name || '',
@@ -216,6 +219,11 @@ const WorkerProfile = () => {
       longitude: locationData.longitude,
       location: locationData.address,
     });
+  };
+
+  const handlePincodeChange = (value: string) => {
+    const cleaned = value.replace(/\D/g, '').slice(0, 6);
+    setFormData(prev => ({ ...prev, pincode: cleaned }));
   };
 
   const handleSave = async () => {
@@ -997,16 +1005,56 @@ const WorkerProfile = () => {
           <CardHeader>
             <CardTitle>Set Your Location</CardTitle>
             <CardDescription>
-              Enter your pincode or click on the map to set your location
+              Choose between map selection or manual entry
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <LocationPicker
-              onLocationSelect={handleLocationSelect}
-              initialPincode={formData.pincode}
-              initialLat={formData.latitude || undefined}
-              initialLng={formData.longitude || undefined}
-            />
+          <CardContent className="space-y-4">
+            <Tabs value={locationInputMode} onValueChange={(v: any) => setLocationInputMode(v)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="map">Map Selection</TabsTrigger>
+                <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="map" className="space-y-4 mt-4">
+                <LocationPicker
+                  onLocationSelect={handleLocationSelect}
+                  initialPincode={formData.pincode}
+                  initialLat={formData.latitude || undefined}
+                  initialLng={formData.longitude || undefined}
+                />
+              </TabsContent>
+              
+              <TabsContent value="manual" className="space-y-4 mt-4">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="manual_address">Full Address</Label>
+                    <Textarea
+                      id="manual_address"
+                      value={formData.location}
+                      onChange={(e) => handleInputChange('location', e.target.value)}
+                      placeholder="Enter your complete address"
+                      rows={3}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="manual_pincode">Pincode *</Label>
+                    <Input
+                      id="manual_pincode"
+                      type="text"
+                      value={formData.pincode}
+                      onChange={(e) => handlePincodeChange(e.target.value)}
+                      placeholder="6-digit pincode"
+                      maxLength={6}
+                      pattern="[0-9]{6}"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter valid 6-digit Indian pincode
+                    </p>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       )}
@@ -1023,29 +1071,26 @@ const WorkerProfile = () => {
           <div className="space-y-2">
             <Label htmlFor="worker_category">Worker Category</Label>
             {isEditing ? (
-              <Select
+              <Combobox
+                options={WORKER_CATEGORIES}
                 value={formData.worker_category}
-                onValueChange={(value) => handleInputChange('worker_category', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select your primary work category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {WORKER_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(value) => handleInputChange('worker_category', value)}
+                placeholder="Select or type your work category"
+                searchPlaceholder="Search categories..."
+                emptyText="No category found. Type to add custom."
+                allowCustom={true}
+              />
             ) : (
               <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
                 <Briefcase className="h-4 w-4 text-muted-foreground" />
                 <span>
-                  {WORKER_CATEGORIES.find(c => c.value === profile?.worker_category)?.label || 'Not selected'}
+                  {WORKER_CATEGORIES.find(c => c.value === profile?.worker_category)?.label || profile?.worker_category || 'Not selected'}
                 </span>
               </div>
             )}
+            <p className="text-xs text-muted-foreground">
+              Select from list or type your own category
+            </p>
           </div>
 
           <div className="space-y-2">
